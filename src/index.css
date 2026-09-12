@@ -12,8 +12,10 @@
 body {
   min-height: 100vh;
   margin: 0;
+  /* Deliberately not `background-attachment: fixed` — iOS Safari handles it
+     badly, repainting the gradient on every scroll frame. */
   background: radial-gradient(circle at top, #1f2647 0%, #0b1024 65%, #050712 100%);
-  background-attachment: fixed;
+  background-repeat: no-repeat;
   /* Keeps content clear of the iPhone notch and home indicator in standalone mode. */
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
     env(safe-area-inset-left);

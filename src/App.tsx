@@ -1,66 +1,32 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
+import { format } from 'date-fns';
 import { CATEGORY_META, GROUP_META, groupOf, isIncome, type GroupId } from './domain/categories';
 import { formatMoney } from './domain/money';
-import type { LedgerState } from './domain/types';
-import { mergeLedgers } from './sync/merge';
+import { QuickAdd } from './components/QuickAdd';
+import { SyncPanel } from './components/SyncPanel';
+import { useLedger } from './hooks/useLedger';
+import { useSync } from './hooks/useSync';
 import { parseLedgerFile, type ParseReport } from './sync/ledgerFile';
-import { loadLedger, saveLedger } from './storage/ledgerStore';
-
-/**
- * Slice 1 shell.
- *
- * Deliberately not the real interface — capture and insights land in slices 3
- * and 4. What this does do is exercise the whole foundation end to end
- * (parse → merge → IndexedDB → read back) and let the household verify its real
- * history imports correctly *before* slice 2 automates the Drive round trip.
- */
 
 const panel = 'border border-brand-line bg-brand-ocean/80 px-4 py-5 shadow-panel';
-const label = 'text-[11px] font-semibold uppercase tracking-[0.28em] text-brand-neutral';
+const label = 'text-[10px] font-semibold uppercase tracking-[0.25em] text-brand-neutral';
 
 const App: React.FC = () => {
-  const [ledger, setLedger] = useState<LedgerState>({ entries: [], tombstones: [] });
+  const ledgerApi = useLedger();
+  const { ledger, loaded, addEntry, deleteEntry, mergeIn } = ledgerApi;
+  const sync = useSync({
+    ledger,
+    revision: ledgerApi.revision,
+    dirty: ledgerApi.dirty,
+    loaded,
+    mergeIn,
+    markSynced: ledgerApi.markSynced
+  });
+
   const [report, setReport] = useState<ParseReport | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [loaded, setLoaded] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement | null>(null);
-
-  useEffect(() => {
-    void loadLedger().then((state) => {
-      setLedger(state);
-      setLoaded(true);
-    });
-  }, []);
-
-  const handleFile = useCallback(async (file: File) => {
-    setBusy(true);
-    setError(null);
-    try {
-      const parsed = parseLedgerFile(JSON.parse(await file.text()));
-
-      if (parsed.report.detected === 'unknown') {
-        setError(
-          `"${file.name}" is not a Money Map backup. Expected a file containing an "expenses" or "entries" array.`
-        );
-        setReport(parsed.report);
-        return;
-      }
-
-      // Merge rather than replace, so importing twice is harmless and importing
-      // a second device's file adds to what is already here.
-      setLedger((current) => {
-        const merged = mergeLedgers(current, parsed.state);
-        void saveLedger(merged);
-        return merged;
-      });
-      setReport(parsed.report);
-    } catch (cause) {
-      setError(cause instanceof Error ? `Could not read that file: ${cause.message}` : 'Could not read that file.');
-    } finally {
-      setBusy(false);
-    }
-  }, []);
 
   const totals = useMemo(() => {
     let income = 0;
@@ -73,46 +39,185 @@ const App: React.FC = () => {
         continue;
       }
       spend += entry.baseAmount;
-      const group = groupOf(entry.category);
-      byGroup.set(group, (byGroup.get(group) ?? 0) + entry.baseAmount);
+      byGroup.set(groupOf(entry.category), (byGroup.get(groupOf(entry.category)) ?? 0) + entry.baseAmount);
     }
 
-    return {
-      income,
-      spend,
-      net: income - spend,
-      groups: [...byGroup.entries()].sort((a, b) => b[1] - a[1])
-    };
+    return { income, spend, groups: [...byGroup.entries()].sort((a, b) => b[1] - a[1]) };
   }, [ledger.entries]);
 
-  const foreignCount = useMemo(
-    () => ledger.entries.filter((entry) => entry.currency !== 'GBP').length,
-    [ledger.entries]
+  const handleDriveImport = useCallback(async () => {
+    setImporting(true);
+    setImportError(null);
+    try {
+      const result = await sync.importFromV1();
+      if (result == null) {
+        setImportError('No money-map-data.json found in your Drive. Try the file drop below instead.');
+      } else {
+        setReport(result);
+      }
+    } catch (cause) {
+      setImportError(cause instanceof Error ? cause.message : 'Import failed.');
+    } finally {
+      setImporting(false);
+    }
+  }, [sync]);
+
+  const handleFile = useCallback(
+    async (file: File) => {
+      setImportError(null);
+      try {
+        const parsed = parseLedgerFile(JSON.parse(await file.text()));
+        if (parsed.report.detected === 'unknown') {
+          setImportError(`"${file.name}" is not a Money Map backup.`);
+          return;
+        }
+        mergeIn(parsed.state);
+        setReport(parsed.report);
+      } catch (cause) {
+        setImportError(cause instanceof Error ? cause.message : 'Could not read that file.');
+      }
+    },
+    [mergeIn]
   );
 
+  const recent = ledger.entries.slice(0, 12);
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-midnight via-brand-ocean to-brand-midnight font-sans text-brand-highlight">
-      <main className="mx-auto max-w-3xl space-y-5 px-4 py-8">
+    <div className="min-h-screen font-sans text-brand-highlight">
+      <main className="mx-auto max-w-2xl space-y-4 px-4 py-6">
         <header className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h1 className="text-3xl font-semibold md:text-4xl">Money Map</h1>
-            <p className="mt-1 text-[11px] uppercase tracking-[0.28em] text-brand-neutral">
-              Foundation build
-            </p>
-          </div>
-          <span className="border border-brand-line bg-brand-ocean/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.25em]">
-            Slice 1
+          <h1 className="text-3xl font-semibold">Money Map</h1>
+          <span className="border border-brand-line bg-brand-ocean/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em]">
+            Slice 2
           </span>
         </header>
 
-        <section className={panel}>
-          <h2 className={label}>Import your history</h2>
-          <p className="mt-3 text-xs text-brand-neutral">
-            Download <code className="border border-brand-line bg-brand-midnight px-1">money-map-data.json</code>{' '}
-            from Google Drive and drop it here. Nothing leaves this device, and your existing Money
-            Map is not touched. Importing the same file twice is safe.
-          </p>
+        <QuickAdd onAdd={addEntry} />
 
+        <SyncPanel
+          status={sync.status}
+          online={sync.online}
+          dirty={sync.dirty}
+          error={sync.error}
+          lastSyncedAt={sync.lastSyncedAt}
+          everGranted={sync.auth.everGranted}
+          onConnect={() => void sync.connect()}
+          onDisconnect={sync.disconnect}
+          onSyncNow={() => void sync.syncNow()}
+          onImportV1={() => void handleDriveImport()}
+          importing={importing}
+        />
+
+        <section className={panel}>
+          <div className="flex items-center justify-between gap-3">
+            <h2 className={label}>Totals</h2>
+            <span className="text-[10px] uppercase tracking-[0.22em] text-brand-neutral">
+              {ledger.entries.length} entries
+            </span>
+          </div>
+
+          {!loaded ? (
+            <p className="mt-3 text-xs text-brand-neutral">Reading…</p>
+          ) : ledger.entries.length === 0 ? (
+            <p className="mt-3 text-xs text-brand-neutral">
+              Nothing yet. Add an entry above, or import your history from the old app.
+            </p>
+          ) : (
+            <>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <div className="border border-brand-line bg-brand-midnight/50 px-3 py-3">
+                  <p className={label}>Income</p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums text-brand-positive">
+                    {formatMoney(totals.income)}
+                  </p>
+                </div>
+                <div className="border border-brand-line bg-brand-midnight/50 px-3 py-3">
+                  <p className={label}>Spend</p>
+                  <p className="mt-1 text-lg font-semibold tabular-nums text-brand-accent">
+                    {formatMoney(totals.spend)}
+                  </p>
+                </div>
+              </div>
+
+              <h3 className={`${label} mt-5`}>By group</h3>
+              <ul className="mt-2 divide-y divide-brand-line border border-brand-line bg-brand-midnight/30">
+                {totals.groups.map(([group, value]) => (
+                  <li key={group} className="flex items-center gap-3 px-3 py-2 text-xs">
+                    <span
+                      className="h-2.5 w-2.5 shrink-0 border border-brand-line"
+                      style={{ backgroundColor: GROUP_META[group].color }}
+                    />
+                    <span className="flex-1 truncate">{GROUP_META[group].label}</span>
+                    <span className="tabular-nums text-brand-neutral">
+                      {totals.spend > 0 ? Math.round((value / totals.spend) * 100) : 0}%
+                    </span>
+                    <span className="w-20 text-right font-semibold tabular-nums">
+                      {formatMoney(value)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </section>
+
+        {recent.length > 0 ? (
+          <section className={panel}>
+            <h2 className={label}>Recent</h2>
+            <ul className="mt-3 divide-y divide-brand-line border border-brand-line bg-brand-midnight/30">
+              {recent.map((entry) => {
+                const meta = CATEGORY_META[entry.category];
+                const income = meta.kind === 'income';
+                return (
+                  <li key={entry.id} className="flex items-center gap-3 px-3 py-2 text-xs">
+                    <span
+                      className="h-6 w-1 shrink-0"
+                      style={{ backgroundColor: meta.color }}
+                      aria-hidden
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate">
+                        {meta.label}
+                        {entry.note.length > 0 ? (
+                          <span className="text-brand-neutral"> · {entry.note}</span>
+                        ) : null}
+                      </p>
+                      <p className="text-[10px] uppercase tracking-[0.2em] text-brand-neutral">
+                        {format(new Date(entry.date), 'd MMM yyyy')}
+                        {entry.user != null ? ` · ${entry.user}` : ''}
+                        {entry.currency !== 'GBP' ? ` · ${entry.amount} ${entry.currency}` : ''}
+                      </p>
+                    </div>
+                    <span
+                      className={`shrink-0 font-semibold tabular-nums ${
+                        income ? 'text-brand-positive' : 'text-brand-highlight'
+                      }`}
+                    >
+                      {income ? '+' : '−'}
+                      {formatMoney(entry.baseAmount)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => deleteEntry(entry.id)}
+                      aria-label={`Delete ${meta.label} entry`}
+                      className="shrink-0 border border-brand-line px-2 py-1 text-[10px] uppercase tracking-[0.2em] text-brand-accent transition hover:bg-brand-accent/10"
+                    >
+                      Del
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ) : null}
+
+        <section className={panel}>
+          <h2 className={label}>Import from a file</h2>
+          <p className="mt-2 text-[11px] text-brand-neutral">
+            If the Drive import above cannot find your old backup, download{' '}
+            <code className="border border-brand-line bg-brand-midnight px-1">money-map-data.json</code>{' '}
+            and drop it here. Importing twice is safe.
+          </p>
           <div
             onDragOver={(event) => event.preventDefault()}
             onDrop={(event) => {
@@ -120,16 +225,14 @@ const App: React.FC = () => {
               const file = event.dataTransfer.files[0];
               if (file != null) void handleFile(file);
             }}
-            className="mt-4 border border-dashed border-brand-line bg-brand-midnight/60 px-4 py-8 text-center"
+            className="mt-3 border border-dashed border-brand-line bg-brand-midnight/60 px-4 py-6 text-center"
           >
-            <p className="text-xs text-brand-neutral">Drop the backup file here</p>
             <button
               type="button"
-              disabled={busy}
               onClick={() => fileInput.current?.click()}
-              className="mt-4 border border-brand-line bg-brand-highlight px-4 py-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-brand-midnight transition hover:bg-brand-amber disabled:cursor-not-allowed disabled:bg-brand-slate/60"
+              className="border border-brand-line px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-highlight transition hover:text-brand-amber"
             >
-              {busy ? 'Reading…' : 'Choose file'}
+              Choose file
             </button>
             <input
               ref={fileInput}
@@ -144,34 +247,34 @@ const App: React.FC = () => {
             />
           </div>
 
-          {error != null ? (
-            <p className="mt-4 border border-brand-accent bg-brand-accent/10 px-3 py-2 text-[11px] text-brand-accent">
-              {error}
+          {importError != null ? (
+            <p className="mt-3 border border-brand-accent bg-brand-accent/10 px-3 py-2 text-[11px] text-brand-accent">
+              {importError}
             </p>
           ) : null}
 
-          {report != null && report.detected !== 'unknown' ? (
-            <div className="mt-4 border border-brand-line bg-brand-midnight/70 px-4 py-3 text-[11px]">
+          {report != null ? (
+            <div className="mt-3 border border-brand-line bg-brand-midnight/70 px-3 py-3 text-[11px]">
               <p className="font-semibold">
-                Read {report.detected === 'v1' ? 'a money-map v1 backup' : 'a Money Map backup'} —{' '}
-                {report.imported} of {report.read} entries imported.
+                {report.imported} of {report.read} entries imported
+                {report.detected === 'v1' ? ' from the old app' : ''}.
               </p>
-              <ul className="mt-2 space-y-1 text-brand-neutral">
+              <ul className="mt-1 space-y-0.5 text-brand-neutral">
                 {report.skipped > 0 ? <li>{report.skipped} skipped as unreadable</li> : null}
                 {report.categoriesCoerced > 0 ? (
-                  <li>{report.categoriesCoerced} moved to Other (category no longer exists)</li>
+                  <li>{report.categoriesCoerced} moved to Other</li>
                 ) : null}
                 {report.timestampsBackfilled > 0 ? (
-                  <li>{report.timestampsBackfilled} had timestamps backfilled</li>
+                  <li>{report.timestampsBackfilled} timestamps backfilled</li>
                 ) : null}
                 {report.tombstones > 0 ? <li>{report.tombstones} deletions carried over</li> : null}
               </ul>
               {report.warnings.length > 0 ? (
-                <details className="mt-3">
+                <details className="mt-2">
                   <summary className="cursor-pointer text-brand-neutral">
                     {report.warnings.length} warning{report.warnings.length === 1 ? '' : 's'}
                   </summary>
-                  <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto text-[10px] text-brand-neutral">
+                  <ul className="mt-1 max-h-40 space-y-0.5 overflow-y-auto text-[10px] text-brand-neutral">
                     {report.warnings.map((warning, index) => (
                       <li key={index}>{warning}</li>
                     ))}
@@ -182,65 +285,8 @@ const App: React.FC = () => {
           ) : null}
         </section>
 
-        <section className={panel}>
-          <h2 className={label}>What's stored on this device</h2>
-          {!loaded ? (
-            <p className="mt-3 text-xs text-brand-neutral">Reading…</p>
-          ) : ledger.entries.length === 0 ? (
-            <p className="mt-3 text-xs text-brand-neutral">
-              Nothing yet. Import a backup above to check your history survives the trip.
-            </p>
-          ) : (
-            <>
-              <div className="mt-4 grid gap-3 sm:grid-cols-3">
-                <div className="border border-brand-line bg-brand-midnight/50 px-3 py-3">
-                  <p className={label}>Entries</p>
-                  <p className="mt-2 text-2xl font-semibold">{ledger.entries.length}</p>
-                </div>
-                <div className="border border-brand-line bg-brand-midnight/50 px-3 py-3">
-                  <p className={label}>Income</p>
-                  <p className="mt-2 text-xl font-semibold text-brand-positive">
-                    {formatMoney(totals.income)}
-                  </p>
-                </div>
-                <div className="border border-brand-line bg-brand-midnight/50 px-3 py-3">
-                  <p className={label}>Spend</p>
-                  <p className="mt-2 text-xl font-semibold text-brand-accent">
-                    {formatMoney(totals.spend)}
-                  </p>
-                </div>
-              </div>
-
-              {/* The group rollup v1 had the data for but never showed. */}
-              <h3 className={`${label} mt-6`}>Where it goes, by group</h3>
-              <ul className="mt-3 divide-y divide-brand-line border border-brand-line bg-brand-midnight/30">
-                {totals.groups.map(([group, value]) => (
-                  <li key={group} className="flex items-center gap-3 px-3 py-2 text-xs">
-                    <span
-                      className="h-2.5 w-2.5 shrink-0 border border-brand-line"
-                      style={{ backgroundColor: GROUP_META[group].color }}
-                    />
-                    <span className="flex-1">{GROUP_META[group].label}</span>
-                    <span className="tabular-nums text-brand-neutral">
-                      {totals.spend > 0 ? Math.round((value / totals.spend) * 100) : 0}%
-                    </span>
-                    <span className="w-24 text-right font-semibold tabular-nums">
-                      {formatMoney(value)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-
-              <p className="mt-4 text-[10px] uppercase tracking-[0.22em] text-brand-neutral">
-                {Object.keys(CATEGORY_META).length} categories · {ledger.tombstones.length} deletions
-                tracked · {foreignCount} non-GBP
-              </p>
-            </>
-          )}
-        </section>
-
-        <footer className="px-1 pb-4 text-[10px] uppercase tracking-[0.25em] text-brand-neutral">
-          Foundation only — capture, sync and insights land in slices 2 to 4.
+        <footer className="px-1 pb-6 text-[10px] uppercase tracking-[0.22em] text-brand-neutral">
+          Capture speed and insights land in slices 3 and 4.
         </footer>
       </main>
     </div>
