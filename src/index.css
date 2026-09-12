@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'Space Grotesk', system-ui, sans-serif;
+  background-color: #090b1d;
+  color: #facc15;
+  color-scheme: dark;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background: radial-gradient(circle at top, #1f2647 0%, #0b1024 65%, #050712 100%);
+  background-attachment: fixed;
+  /* Keeps content clear of the iPhone notch and home indicator in standalone mode. */
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+  -webkit-tap-highlight-color: transparent;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Stop iOS zooming the page when a text field is focused. Anything under 16px
+   triggers it, and this app uses small type everywhere. */
+input,
+select,
+textarea {
+  font-size: 16px;
+}

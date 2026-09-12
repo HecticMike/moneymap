@@ -1,0 +1,12 @@
+node_modules
+dist
+dev-dist
+build
+coverage
+.DS_Store
+*.local
+.env
+.env.local
+.eslintcache
+*.log
+*.tsbuildinfo
