@@ -4,6 +4,66 @@ Newest entry first. Factual and concise; partial work is stated as partial.
 
 ---
 
+## 2026-09-12 — iPhone layout fixes
+
+### Goal
+Fix visual defects reported from a real iPhone 15: Date and Person fields
+overlapping, plus "some inconsistencies".
+
+### Root causes found
+Reproduced by adding **WebKit** to the Playwright setup. Chromium does not stand
+in for this — the defects are specifically how WebKit sizes and paints form
+controls.
+
+1. **Selects rendered lighter than the inputs beside them.** WebKit styles form
+   controls itself and overrides Tailwind's `bg-brand-midnight`, so Category and
+   Person were visibly grey next to Date and Note. This was the "inconsistency".
+2. **Date/Person overlap.** They shared a two-column grid. The native date
+   control has a minimum intrinsic width and will not shrink, so at 393px it
+   pushed into its neighbour.
+3. **Tap targets below Apple's 44pt minimum** — worst was Delete at 26px, on a
+   destructive action in a scrollable list.
+
+### Completed
+- `appearance: none` plus explicit background on every form control, with a
+  brand-yellow chevron drawn as an inline SVG to replace the native arrow.
+- Date and Person each take a full row. Person became a **segmented control** —
+  bigger targets, one tap instead of a dropdown, no native styling to fight.
+- Added **Today / Yesterday** shortcuts next to the date. A capture-speed win
+  that arrives early.
+- All interactive controls raised to 44px via a `.tap-target` utility.
+- Delete is now a 44×44 icon button instead of a 26px "Del".
+- `background-attachment: fixed` removed earlier this session stays out; iOS
+  repaints it badly.
+
+### New tooling
+`scripts/audit-layout.mjs` (`npm run audit:layout`) measures rather than
+eyeballs: horizontal overflow, elements escaping the viewport, overlapping
+controls, and undersized tap targets — in WebKit at a chosen iPhone profile.
+
+First run flagged a truncated note as overflowing. That was a false positive:
+`getBoundingClientRect` reports the unclipped layout box, so any `truncate`d
+text looks oversized. The audit now ignores elements clipped by an ancestor.
+
+### Checks run
+- `npm run audit:layout` — **clean on iPhone 15 and iPhone 13 Mini**: no
+  overflow, no overlaps, no undersized targets, no JS errors
+- `npm test` — 67 passed
+- `npm run verify:browser` — 12/12
+- typecheck and build clean
+
+### Known issues
+- Slice 2's list stands: no UI to re-rate an approximate-FX entry;
+  `icon-512.png` still 309 KB.
+- Only WebKit-in-Playwright, not a physical device. It reproduced the reported
+  defects faithfully, but real iOS Safari can still differ on native controls.
+
+### Next recommended task
+**Slice 3 — fast capture.** One-tap category chips ranked by actual usage, saved
+templates, and free-text entry, on top of the form as it now stands.
+
+---
+
 ## 2026-09-12 — Slice 2: automatic Drive sync
 
 ### Goal

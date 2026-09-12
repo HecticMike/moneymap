@@ -196,13 +196,22 @@ const App: React.FC = () => {
                       {income ? '+' : '−'}
                       {formatMoney(entry.baseAmount)}
                     </span>
+                    {/* 26px before — below Apple's 44pt minimum, on a
+                        destructive action sitting next to a scrollable list. */}
                     <button
                       type="button"
                       onClick={() => deleteEntry(entry.id)}
                       aria-label={`Delete ${meta.label} entry`}
-                      className="shrink-0 border border-brand-line px-2 py-1 text-[10px] uppercase tracking-[0.2em] text-brand-accent transition hover:bg-brand-accent/10"
+                      className="tap-target flex w-11 shrink-0 items-center justify-center border border-brand-line text-brand-accent transition hover:bg-brand-accent/10"
                     >
-                      Del
+                      <svg viewBox="0 0 14 14" className="h-3.5 w-3.5" aria-hidden focusable="false">
+                        <path
+                          d="M2 4h10M5.5 4V2.5h3V4M3.5 4l.6 8h5.8l.6-8M6 6.5v3M8 6.5v3"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.2"
+                        />
+                      </svg>
                     </button>
                   </li>
                 );
@@ -230,7 +239,7 @@ const App: React.FC = () => {
             <button
               type="button"
               onClick={() => fileInput.current?.click()}
-              className="border border-brand-line px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-highlight transition hover:text-brand-amber"
+              className="tap-target border border-brand-line px-4 text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-highlight transition hover:text-brand-amber"
             >
               Choose file
             </button>

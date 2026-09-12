@@ -9,11 +9,23 @@ interface QuickAddProps {
   onAdd: (draft: EntryDraft) => Promise<AddResult>;
 }
 
-const today = (): string => new Date().toISOString().slice(0, 10);
+const dayOffset = (days: number): string => {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+};
+
+const today = (): string => dayOffset(0);
 
 const field =
-  'w-full border border-brand-line bg-brand-midnight px-3 py-2 text-sm text-brand-highlight focus:border-brand-highlight focus:outline-none';
+  'tap-target w-full border border-brand-line bg-brand-midnight px-3 py-2 text-sm text-brand-highlight focus:border-brand-highlight focus:outline-none';
 const label = 'text-[10px] font-semibold uppercase tracking-[0.25em] text-brand-neutral';
+
+/** Segmented control. Bigger targets than a select, and no native styling to fight. */
+const segment = (active: boolean): string =>
+  `tap-target flex-1 px-2 text-xs font-semibold transition ${
+    active ? 'bg-brand-highlight text-brand-midnight' : 'text-brand-highlight hover:text-brand-amber'
+  }`;
 
 /**
  * Mobile-first capture.
@@ -128,31 +140,61 @@ export const QuickAdd: React.FC<QuickAddProps> = ({ onAdd }) => {
         </select>
       </label>
 
-      <div className="mt-4 grid grid-cols-2 gap-3">
-        <label className="block">
+      {/* Date and Person were side by side in a two-column grid. On an iPhone 15
+          the native date control will not shrink below its intrinsic width and
+          pushed into the Person field. They each get a full row now, and Person
+          became a segmented control — larger targets, one tap instead of a
+          dropdown, and no native select styling to fight. */}
+      <div className="mt-4">
+        <div className="flex items-center justify-between">
           <span className={label}>Date</span>
-          <input
-            type="date"
-            value={date}
-            onChange={(event) => setDate(event.target.value)}
-            className={`${field} mt-1`}
-          />
-        </label>
-        <label className="block">
-          <span className={label}>Person</span>
-          <select
-            value={person}
-            onChange={(event) => setPerson(event.target.value)}
-            className={`${field} mt-1`}
-          >
-            <option value="">Not set</option>
-            {HOUSEHOLD.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
+          <div className="flex gap-1">
+            {[
+              { label: 'Today', value: dayOffset(0) },
+              { label: 'Yesterday', value: dayOffset(-1) }
+            ].map((option) => (
+              <button
+                key={option.label}
+                type="button"
+                onClick={() => setDate(option.value)}
+                aria-pressed={date === option.value}
+                className={`tap-target border px-3 text-[10px] font-semibold uppercase tracking-[0.15em] transition ${
+                  date === option.value
+                    ? 'border-brand-highlight text-brand-amber'
+                    : 'border-brand-line text-brand-neutral hover:text-brand-amber'
+                }`}
+              >
+                {option.label}
+              </button>
             ))}
-          </select>
-        </label>
+          </div>
+        </div>
+        <input
+          type="date"
+          value={date}
+          onChange={(event) => setDate(event.target.value)}
+          className={`${field} mt-1`}
+        />
+      </div>
+
+      <div className="mt-4">
+        <span className={label}>Person</span>
+        <div className="mt-1 flex border border-brand-line">
+          <button type="button" onClick={() => setPerson('')} aria-pressed={person === ''} className={segment(person === '')}>
+            Not set
+          </button>
+          {HOUSEHOLD.map((name) => (
+            <button
+              key={name}
+              type="button"
+              onClick={() => setPerson(name)}
+              aria-pressed={person === name}
+              className={`${segment(person === name)} border-l border-brand-line`}
+            >
+              {name}
+            </button>
+          ))}
+        </div>
       </div>
 
       <label className="mt-4 block">
@@ -169,7 +211,7 @@ export const QuickAdd: React.FC<QuickAddProps> = ({ onAdd }) => {
       <button
         type="submit"
         disabled={!valid || busy}
-        className="mt-5 w-full border border-brand-line bg-brand-highlight px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.25em] text-brand-midnight transition hover:bg-brand-amber disabled:cursor-not-allowed disabled:bg-brand-slate/60 disabled:text-brand-neutral/50"
+        className="tap-target mt-5 w-full border border-brand-line bg-brand-highlight px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.25em] text-brand-midnight transition hover:bg-brand-amber disabled:cursor-not-allowed disabled:bg-brand-slate/60 disabled:text-brand-neutral/50"
       >
         {busy ? 'Saving…' : 'Add entry'}
       </button>

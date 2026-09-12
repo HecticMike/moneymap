@@ -50,7 +50,7 @@ export const SyncPanel: React.FC<SyncPanelProps> = ({
 }) => {
   const effective: SyncStatus = !online && status !== 'syncing' ? 'offline' : status;
   const button =
-    'border border-brand-line px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.2em] transition disabled:cursor-not-allowed disabled:opacity-40';
+    'tap-target border border-brand-line px-4 text-[10px] font-semibold uppercase tracking-[0.2em] transition disabled:cursor-not-allowed disabled:opacity-40';
 
   return (
     <section className="border border-brand-line bg-brand-ocean/80 px-4 py-5 shadow-panel">

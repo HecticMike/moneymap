@@ -33,3 +33,54 @@ select,
 textarea {
   font-size: 16px;
 }
+
+/* WebKit styles form controls itself and beats Tailwind's background utility,
+   so on iPhone the selects rendered noticeably lighter than the text inputs
+   beside them. Resetting the appearance is what makes a select and an input
+   look like the same control. */
+select,
+textarea,
+input[type='text'],
+input[type='search'],
+input[type='number'],
+input[type='date'] {
+  -webkit-appearance: none;
+  appearance: none;
+  background-color: #090b1d;
+  color: #facc15;
+  border-radius: 0;
+  min-width: 0;
+}
+
+/* Native arrow removed with the appearance reset, so draw our own in brand yellow. */
+select {
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23facc15' stroke-width='1.5' fill='none' stroke-linecap='square'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+  background-size: 0.7rem;
+  padding-right: 2.25rem;
+}
+
+/* iOS renders the date value in a centred inline block that will not shrink,
+   which is what pushed this field into its neighbour on an iPhone 15. */
+input[type='date'] {
+  text-align: left;
+}
+
+input[type='date']::-webkit-date-and-time-value {
+  text-align: left;
+  margin: 0;
+}
+
+/* The picker glyph ships black; invert it so it reads on the dark ground. */
+input[type='date']::-webkit-calendar-picker-indicator {
+  filter: invert(85%) sepia(60%) saturate(1200%) hue-rotate(350deg) brightness(105%);
+  opacity: 0.85;
+  cursor: pointer;
+}
+
+/* Apple's minimum comfortable tap target. Applied to controls rather than to
+   every button so small inline affordances can still opt out deliberately. */
+.tap-target {
+  min-height: 44px;
+}
