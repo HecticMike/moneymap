@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { committedKeys, isCommittedEntry, reviewChoices, splitSpend } from './choices';
+import { chosenByMonth, committedKeys, isCommittedEntry, reviewChoices, splitSpend } from './choices';
 import { monthToDate, rangeWindow } from './insights';
 import type { CategoryId } from './categories';
 import type { Entry } from './types';
@@ -182,6 +182,76 @@ describe('reviewChoices', () => {
     const review = reviewChoices([], { now: NOW });
     expect(review.chosen.current).toBe(0);
     expect(review.lines).toEqual([]);
+  });
+});
+
+describe('chosenByMonth', () => {
+  const household = [
+    ...rent([5, 6, 7, 8, 9]),
+    ...netflix([5, 6, 7, 8, 9]),
+    ...[5, 6, 7, 8].map((month) => on(2026, month, 20, 40, 'leisure_lifestyle_eating_out', 'Lunch')),
+    on(2026, 9, 6, 300, 'leisure_lifestyle_eating_out', 'Birthday dinner')
+  ];
+
+  it('returns the requested months, oldest first', () => {
+    const series = chosenByMonth(household, { now: NOW, months: 4 });
+    expect(series.map((p) => p.label)).toEqual(['Jun', 'Jul', 'Aug', 'Sep']);
+  });
+
+  it('excludes obligations from every point', () => {
+    // Rent (£1,250) and Netflix (£9.99) land on the 1st and 5th of every month,
+    // so they sit inside every window under either span. Not one point may
+    // contain them.
+    const series = chosenByMonth(household, { now: NOW, months: 5, span: 'full' });
+    expect(series.find((p) => p.label === 'Aug')!.chosen).toBe(40);
+    expect(series.every((point) => point.chosen < 1000)).toBe(true);
+  });
+
+  it('takes the same slice of every month by default', () => {
+    // August's £40 lunch falls on the 20th, past today's 13th. Under the
+    // default span it is outside the window — every bar covers days 1-13, so
+    // the columns and the baseline rule measure the same thing.
+    const series = chosenByMonth(household, { now: NOW, months: 5 });
+    expect(series.find((p) => p.label === 'Aug')!.chosen).toBe(0);
+    // And nothing is "partial" when every point spans the same days.
+    expect(series.every((p) => !p.partial)).toBe(true);
+  });
+
+  it('can take whole months when asked', () => {
+    const full = chosenByMonth(household, { now: NOW, months: 5, span: 'full' });
+    expect(full.find((p) => p.label === 'Aug')!.chosen).toBe(40);
+    expect(full.filter((p) => p.partial).map((p) => p.label)).toEqual(['Sep']);
+  });
+
+  it('clamps the same-days window to a short month', () => {
+    // Asked on the 31st, February's window must end on the 28th rather than
+    // spilling into March.
+    const endOfMarch = new Date(2026, 2, 31, 12, 0, 0);
+    const feb = [on(2026, 2, 28, 25, 'leisure_lifestyle_eating_out', 'Lunch')];
+    expect(chosenByMonth(feb, { now: endOfMarch, months: 2 })[0]!.chosen).toBe(25);
+  });
+
+  it('never counts days that have not happened yet', () => {
+    const withFuture = [...household, on(2026, 9, 28, 500, 'living_home_supermarket')];
+    const september = chosenByMonth(withFuture, { now: NOW, months: 1 })[0];
+    expect(september!.chosen).toBe(300);
+  });
+
+  it('can follow a single category', () => {
+    const series = chosenByMonth(household, {
+      now: NOW,
+      months: 5,
+      span: 'full',
+      category: 'leisure_lifestyle_eating_out'
+    });
+    expect(series.find((p) => p.label === 'Sep')!.chosen).toBe(300);
+    expect(series.find((p) => p.label === 'Aug')!.chosen).toBe(40);
+  });
+
+  it('gives every choice line a trend to draw', () => {
+    const review = reviewChoices(household, { now: NOW });
+    expect(review.lines.length).toBeGreaterThan(0);
+    for (const line of review.lines) expect(line.trend).toHaveLength(6);
   });
 });
 

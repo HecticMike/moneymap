@@ -4,6 +4,76 @@ Newest entry first. Factual and concise; partial work is stated as partial.
 
 ---
 
+## 2026-09-13 — Charts
+
+### Goal
+Visuals that help read the data, rather than decorate it.
+
+### What was built
+- **Trend columns** on the headline card — chosen spend per month with the usual
+  level as a reference rule. **Emphasis form**, not categorical: this month in
+  the accent, earlier months recessive. Six hues here would bury the one bar the
+  reader came for. Per-bar tooltip, and a table twin behind a "Numbers" toggle.
+- **Sparklines** on each choice row — six months inline. Single series, so no
+  legend: the line is de-emphasis ink and only the end point wears the category
+  colour. This answers *"is this creeping up?"*, which a single
+  month-versus-average number cannot.
+
+### The colour audit — three real defects
+Ran the palette through the validator rather than eyeballing it:
+
+- **Supermarket `#f97316` and Eating Out `#fb923c` measured ΔE 6.5 for *normal*
+  vision** (floor is 15). The two largest spending categories rendered as the
+  same orange for everyone, not just under CVD. Eating Out re-stepped to
+  `#c2410c` → ΔE 15.5.
+- **Other and Subscriptions were byte-identical** (`#94a3b8`). Other darkened to
+  `#4d566b` → ΔE 25.7.
+- **Six group colours cannot clear all-pairs**, and the rows sort by amount so
+  adjacency is not fixed. Only **three** slots pass all-pairs. Hence: no stacked
+  composition bar — it would have restated the labelled rows *and* introduced a
+  colour problem. The rows carry a text label beside every dot, so identity
+  never rests on hue.
+
+### The bug only rendering could catch
+The first build drew **full-month columns against a same-days baseline** — the
+bars and the reference rule measured different things, so the chart asserted a
+comparison it had not made. Every column now covers the same slice of its month
+(1st through today), matching the headline exactly, labelled "first 13 days of
+each month". That also removes the partial-month problem instead of labelling
+around it. The rule's label moved above the plot, where it had been colliding
+with the tallest column.
+
+### Files changed
+New: `src/components/charts/{Sparkline,TrendColumns}.tsx`.
+Modified: `src/domain/categories.ts` (two colour fixes),
+`src/domain/{choices,choices.test}.ts` (`chosenByMonth`, `span`),
+`src/components/Insights.tsx`, `src/components/charts/TrendColumns.tsx`.
+
+### Checks run
+- `npm test` — **212 passed** (was 204; +8 on the monthly series)
+- `npm run verify:all` — 87 browser checks, all passing
+- `npm run audit:layout` — clean on iPhone 15 and iPhone 13 Mini, main + sheet
+- `validate_palette.js` — 3-slot cap PASSES all-pairs on the dark surface;
+  the two re-stepped pairs clear the normal-vision floor
+- typecheck and build clean
+
+### Known issues / blockers
+- **Category colours beyond the top three rely on their text label.** That is
+  legitimate (secondary encoding) but means a colour-only reading of a long
+  category list is not dependable. Groups fail the lightness band and the gray
+  "Other" fails the chroma floor by design.
+- No streak detection yet — the sparkline shows drift, but nothing says "four
+  months running" in words.
+- Committed/discretionary split still unvalidated against real data.
+- Favourites sync still unproven across two devices.
+- `icon-512.png` still 309 KB; no UI to re-rate an approximate-FX entry.
+
+### Next recommended task
+Streak detection in words over the chosen figure, which the sparklines now make
+visible but do not state.
+
+---
+
 ## 2026-09-13 — Spending and balance views
 
 ### Goal

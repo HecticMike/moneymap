@@ -1,3 +1,4 @@
+import { endOfDay, endOfMonth, format, startOfMonth, subMonths } from 'date-fns';
 import { CATEGORY_META, isIncome, type CategoryId } from './categories';
 import { compare, comparableWindows, monthToDate, type Comparison, type DateWindow } from './insights';
 import { roundMoney } from './money';
@@ -71,6 +72,87 @@ export const splitSpend = (
   };
 };
 
+export interface ChosenPoint {
+  /** ISO timestamp of the first of the month. */
+  month: string;
+  label: string;
+  chosen: number;
+  /** True for the current month, which is only partly elapsed. */
+  partial: boolean;
+}
+
+export interface SeriesOptions extends ChoiceOptions {
+  months?: number;
+  /** Restrict to one category; omit for all chosen spend. */
+  category?: CategoryId;
+  /**
+   * `toDate` (the default) takes the same slice of every month — the 1st
+   * through today's day-of-month. `full` takes whole months.
+   */
+  span?: 'toDate' | 'full';
+}
+
+/**
+ * Chosen spend per month, for the trend chart and the per-category sparklines.
+ *
+ * Defaults to `toDate` for a reason. Charting six *whole* months beside a
+ * thirteen-day one, against a baseline computed from the same thirteen days,
+ * puts two different definitions on one axis — the bars and the reference rule
+ * would measure different things, and the chart would assert a comparison it
+ * had not actually made. Taking the same slice of every month makes every bar
+ * comparable to every other and to the headline, and removes the partial-month
+ * problem entirely rather than labelling around it.
+ */
+export const chosenByMonth = (entries: Entry[], options: SeriesOptions = {}): ChosenPoint[] => {
+  const now = options.now ?? new Date();
+  const months = options.months ?? 6;
+  const span = options.span ?? 'toDate';
+  const keys = committedKeys(entries, now);
+  const currentKey = startOfMonth(now).toISOString();
+  const throughDay = now.getDate();
+
+  const points: ChosenPoint[] = [];
+
+  for (let back = months - 1; back >= 0; back -= 1) {
+    const start = startOfMonth(subMonths(now, back));
+    const key = start.toISOString();
+    const monthEnd = endOfMonth(start);
+
+    let end: Date;
+    if (key === currentKey) {
+      // Never count days that have not happened yet.
+      end = endOfDay(now);
+    } else if (span === 'full') {
+      end = monthEnd;
+    } else {
+      const sameDay = new Date(start);
+      sameDay.setDate(throughDay);
+      // Short months clamp to their own end rather than spilling forward.
+      end = endOfDay(sameDay > monthEnd ? monthEnd : sameDay);
+    }
+
+    const window: DateWindow = { start, end, throughDayOfMonth: throughDay };
+
+    const split = splitSpend(
+      entries,
+      window,
+      keys,
+      options.category == null ? undefined : (entry) => entry.category === options.category
+    );
+
+    points.push({
+      month: key,
+      label: format(start, 'MMM'),
+      chosen: split.chosen,
+      // Only meaningful for `full`: with `toDate` every point covers the same
+      // span, so none of them is partial relative to the others.
+      partial: span === 'full' && key === currentKey && monthEnd.getTime() > endOfDay(now).getTime()
+    });
+  }
+
+  return points;
+};
+
 export interface ChoiceLine {
   category: CategoryId;
   label: string;
@@ -85,6 +167,8 @@ export interface ChoiceLine {
    * the delta, framed as a lever rather than a scolding.
    */
   couldFree: number | null;
+  /** Six months of this category's chosen spend, for the row's sparkline. */
+  trend: ChosenPoint[];
 }
 
 export interface ChoiceReview {
@@ -152,7 +236,8 @@ export const reviewChoices = (entries: Entry[], options: ChoiceOptions = {}): Ch
         amount,
         share: current.chosen > 0 ? amount / current.chosen : 0,
         comparison,
-        couldFree: comparison.notable && comparison.deltaAbs > 0 ? comparison.deltaAbs : null
+        couldFree: comparison.notable && comparison.deltaAbs > 0 ? comparison.deltaAbs : null,
+        trend: chosenByMonth(entries, { now, months: 6, category })
       };
     })
     .filter((line) => line.amount > 0 || line.comparison.notable)

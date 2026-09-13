@@ -65,7 +65,7 @@ export const GROUP_META: Record<GroupId, GroupMeta> = {
   family_education: { label: 'Family & Education', color: '#9333ea', kind: 'expense' },
   leisure_lifestyle: { label: 'Leisure & Lifestyle', color: '#ec4899', kind: 'expense' },
   income: { label: 'Income', color: '#facc15', kind: 'income' },
-  other: { label: 'Other', color: '#94a3b8', kind: 'expense' }
+  other: { label: 'Other', color: '#4d566b', kind: 'expense' }
 };
 
 /** Colours are unchanged from v1. */
@@ -90,7 +90,10 @@ export const CATEGORY_META: Record<CategoryId, CategoryMeta> = {
   family_education_gifts_celebrations: { label: 'Gifts & Celebrations', color: '#fbbf24', kind: 'expense', group: 'family_education' },
 
   leisure_lifestyle_clothing: { label: 'Clothing', color: '#f472b6', kind: 'expense', group: 'leisure_lifestyle' },
-  leisure_lifestyle_eating_out: { label: 'Eating Out', color: '#fb923c', kind: 'expense', group: 'leisure_lifestyle' },
+  // Was #fb923c, which measured ΔE 6.5 from Supermarket's #f97316 for *normal*
+  // vision — the two biggest spending categories rendered as the same orange.
+  // Re-stepped to ΔE 15.5.
+  leisure_lifestyle_eating_out: { label: 'Eating Out', color: '#c2410c', kind: 'expense', group: 'leisure_lifestyle' },
   leisure_lifestyle_entertainment: { label: 'Entertainment', color: '#ec4899', kind: 'expense', group: 'leisure_lifestyle' },
   leisure_lifestyle_travel_holidays: { label: 'Travel & Holidays', color: '#8b5cf6', kind: 'expense', group: 'leisure_lifestyle' },
   leisure_lifestyle_toys: { label: 'Toys', color: '#f87171', kind: 'expense', group: 'leisure_lifestyle' },
@@ -99,7 +102,9 @@ export const CATEGORY_META: Record<CategoryId, CategoryMeta> = {
   income_salary: { label: 'Salary', color: '#facc15', kind: 'income', group: 'income' },
   income_other: { label: 'Other income', color: '#bef264', kind: 'income', group: 'income' },
 
-  other: { label: 'Other', color: '#94a3b8', kind: 'expense', group: 'other' }
+  // Was #94a3b8 — byte-identical to Subscriptions. Darkened to read as the
+  // residual bucket and to clear Subscriptions by ΔE 25.7.
+  other: { label: 'Other', color: '#4d566b', kind: 'expense', group: 'other' }
 };
 
 export const CATEGORY_IDS = Object.keys(CATEGORY_META) as CategoryId[];

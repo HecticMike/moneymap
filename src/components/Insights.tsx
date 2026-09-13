@@ -8,7 +8,9 @@ import {
   isIncome,
   type GroupId
 } from '../domain/categories';
-import { reviewChoices, type ChoiceLine } from '../domain/choices';
+import { chosenByMonth, reviewChoices, type ChoiceLine } from '../domain/choices';
+import { Sparkline } from './charts/Sparkline';
+import { TrendColumns } from './charts/TrendColumns';
 import {
   RANGES,
   entryInWindow,
@@ -103,15 +105,21 @@ const ChoiceRow: React.FC<{ line: ChoiceLine }> = ({ line }) => (
         aria-hidden
       />
       <span className="min-w-0 flex-1 truncate text-caption text-ink">{line.label}</span>
-      <span className="tnum text-micro text-ink-faint">{percent(line.share)}</span>
+      {/* Six months inline: whether this is drifting, not just whether this
+          month was odd. */}
+      <Sparkline points={line.trend} color={line.color} label={line.label} />
       <span className="tnum w-20 text-right text-caption font-semibold text-ink">
         {formatMoney(line.amount)}
       </span>
     </div>
-    {/* A bar at 0% is noise. When nothing was spent, the sentence below — "£55
-        less than usual", i.e. you have not filled up yet — is the whole point
-        of the row. */}
-    {line.amount > 0 ? <Bar className="mt-2" share={line.share} color={line.color} /> : null}
+    <div className="mt-1 flex items-center gap-3">
+      <span className="tnum w-[18px] shrink-0 text-micro text-ink-faint">
+        {percent(line.share)}
+      </span>
+      <div className="min-w-0 flex-1">
+        <Bar share={line.share} color={line.color} />
+      </div>
+    </div>
     {line.couldFree != null ? (
       // The same number as the delta, framed as a lever rather than a scolding.
       <p className="tnum mt-1.5 text-micro text-brand-highlight">
@@ -130,6 +138,7 @@ export const Insights: React.FC<InsightsProps> = ({ entries, showIncome }) => {
   const [range, setRange] = useState<RangeId>('3m');
 
   const choices = useMemo(() => reviewChoices(entries), [entries]);
+  const trend = useMemo(() => chosenByMonth(entries, { months: 6 }), [entries]);
   const month = useMemo(() => reviewMonth(entries), [entries]);
   const committed = useMemo(() => committedSpend(entries), [entries]);
 
@@ -203,6 +212,19 @@ export const Insights: React.FC<InsightsProps> = ({ entries, showIncome }) => {
             </p>
           </>
         )}
+
+        {/* The chart that actually answers the question. Emphasis form: this
+            month in the accent, the rest recessive, the usual level drawn as a
+            rule you can see rather than a number the app asserts. */}
+        {trend.length >= 2 ? (
+          <div className="mt-5">
+            <TrendColumns
+              points={trend}
+              baseline={choices.insufficientHistory ? null : choices.chosen.baseline}
+              spanLabel={`first ${choices.window.throughDayOfMonth} days of each month`}
+            />
+          </div>
+        ) : null}
 
         <div className="mt-4 rounded-control bg-surface-inset/70 px-3.5 py-3">
           <div className="flex items-baseline justify-between gap-3">
