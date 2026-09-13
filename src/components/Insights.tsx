@@ -25,6 +25,12 @@ import { Card, CardHeader, Label, Well, cx } from './ui';
 
 interface InsightsProps {
   entries: Entry[];
+  /**
+   * In spending mode the insights ignore income entirely — that is the point
+   * of the mode. The balance view renders income properly in its own card
+   * rather than as a footnote here.
+   */
+  showIncome: boolean;
 }
 
 const percent = (value: number): string => `${Math.round(Math.abs(value) * 100)}%`;
@@ -119,7 +125,7 @@ const ChoiceRow: React.FC<{ line: ChoiceLine }> = ({ line }) => (
   </li>
 );
 
-export const Insights: React.FC<InsightsProps> = ({ entries }) => {
+export const Insights: React.FC<InsightsProps> = ({ entries, showIncome }) => {
   const [openGroup, setOpenGroup] = useState<GroupId | null>(null);
   const [range, setRange] = useState<RangeId>('3m');
 
@@ -210,7 +216,7 @@ export const Insights: React.FC<InsightsProps> = ({ entries }) => {
           </p>
         </div>
 
-        {month.income.current > 0 ? (
+        {showIncome && month.income.current > 0 ? (
           <p className="mt-3 text-caption text-ink-muted">
             Income {formatMoney(month.income.current)} ·{' '}
             <span

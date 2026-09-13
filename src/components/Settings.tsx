@@ -7,11 +7,15 @@ import type { ParseReport } from '../sync/ledgerFile';
 import { FavouriteManager } from './Favourites';
 import { SyncPanel } from './SyncPanel';
 import type { SyncStatus } from '../hooks/useSync';
+import type { ViewMode } from '../hooks/useSettings';
 import { Button, Label, Segmented, Sheet, cx } from './ui';
 
 interface SettingsProps {
   open: boolean;
   onClose: () => void;
+
+  view: ViewMode;
+  onViewChange: (view: ViewMode) => void;
 
   owner: string | null;
   onOwnerChange: (owner: string) => void;
@@ -58,6 +62,8 @@ const Section: React.FC<{ title: string; hint?: string; children: React.ReactNod
 export const Settings: React.FC<SettingsProps> = ({
   open,
   onClose,
+  view,
+  onViewChange,
   owner,
   onOwnerChange,
   captureCurrency,
@@ -78,6 +84,27 @@ export const Settings: React.FC<SettingsProps> = ({
 
   return (
     <Sheet open={open} onClose={onClose} title="Settings">
+      {/* First, because it decides what the rest of the app shows. */}
+      <Section
+        title="What to show"
+        hint={
+          view === 'spending'
+            ? 'Spending only — where the money goes, income left out of the insights entirely.'
+            : 'Balance adds income against outgoings, net and savings rate, on top of the spending view.'
+        }
+      >
+        <Segmented
+          ariaLabel="What the insights show"
+          className="flex w-full"
+          value={view}
+          onChange={onViewChange}
+          options={[
+            { value: 'spending', label: 'Spending' },
+            { value: 'balance', label: 'Balance' }
+          ]}
+        />
+      </Section>
+
       <Section
         title="This phone"
         hint="New entries default to this person, and their favourites open first."

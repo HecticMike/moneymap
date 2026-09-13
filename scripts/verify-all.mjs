@@ -13,7 +13,7 @@
 import { spawn } from 'node:child_process';
 
 const url = process.argv[2] ?? 'http://localhost:5173/';
-const suites = ['verify-import', 'verify-capture', 'verify-insights', 'verify-favourites'];
+const suites = ['verify-import', 'verify-capture', 'verify-insights', 'verify-favourites', 'verify-views'];
 
 const run = (suite) =>
   new Promise((resolve) => {

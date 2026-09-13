@@ -4,6 +4,73 @@ Newest entry first. Factual and concise; partial work is stated as partial.
 
 ---
 
+## 2026-09-13 — Spending and balance views
+
+### Goal
+Two selectable views: spending only (the default and the point of the app) and
+balance, a proper budget tracker. The balance side is not a priority now but
+should live in the system so it can grow without the app being reshaped later.
+
+### What changed
+A `view` setting — `'spending' | 'balance'`, defaulting to spending, stored per
+device alongside the owner and capture currency.
+
+**Spending mode ignores income entirely.** Not "hides a line" — the insights
+never reference it. That is what makes it a mode rather than a decoration, and
+there is a browser check asserting income cannot be found anywhere in the
+spending insights.
+
+**Balance mode** adds a card above the spending view: net for the month, in and
+out, savings rate against the usual, and six months of paired income/spend bars.
+Paired rather than a single net bar, because seeing both at the same scale is
+what makes a thin margin obvious. The current month is faded and labelled "so
+far" — a month that has had its salary but not yet its rent looks spectacular
+until the 1st.
+
+Spending stays underneath in both modes, because it is still the app.
+
+### Bug caught by its own test
+`summariseBalance` averaged every completed month in the window, including
+months from before the household started logging. Asking for six months with
+four of data reported the typical net as £400 instead of £500; asking for twelve
+would have reported a third of the truth.
+
+This is the *same* flaw already fixed in the insights baseline, reintroduced in
+new code. Now excluded the same way — months entirely before the first entry are
+not "a month where they netted nothing", they are months with no data.
+
+### Files changed
+New: `src/domain/{balance,balance.test}.ts`, `src/components/Balance.tsx`,
+`scripts/verify-views.mjs`.
+Modified: `src/hooks/useSettings.ts` (`ViewMode`), `src/components/Settings.tsx`,
+`src/components/Insights.tsx` (`showIncome`), `src/App.tsx`,
+`scripts/verify-all.mjs`, `package.json`.
+
+### Checks run
+- `npm test` — **204 passed** (was 190; +14 on monthly balance)
+- `npm run verify:all` — **87 browser checks across 5 suites**, including that
+  spending mode leaves income out, that the setting survives a reload, and that
+  switching back removes the balance card
+- `npm run audit:layout` — clean on iPhone 15 and iPhone 13 Mini
+- typecheck and build clean; precache 703 KB
+
+### Known issues / blockers
+- The balance view is deliberately thin: net, savings rate, six months. No
+  budgets, targets or forecasts — the scaffolding is there for those, none of
+  it is built.
+- Still no trajectory on the spending side (sparklines, streaks).
+- Committed/discretionary split leans on recurring detection, still unvalidated
+  against real data.
+- Favourites sync still unproven across two devices.
+- `icon-512.png` still 309 KB; no UI to re-rate an approximate-FX entry.
+
+### Next recommended task
+Trajectory on the spending side — sparklines per group and streak detection over
+the *chosen* figure. Alternatively, if the balance view turns out to get used,
+monthly targets per group would slot straight into it.
+
+---
+
 ## 2026-09-13 — Choices, not total spend
 
 ### Goal

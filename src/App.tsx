@@ -3,6 +3,7 @@ import { format, isToday, isYesterday } from 'date-fns';
 import { CATEGORY_META } from './domain/categories';
 import { formatMoney } from './domain/money';
 import { HOUSEHOLD } from './domain/people';
+import { Balance } from './components/Balance';
 import { Capture } from './components/Capture';
 import { Insights } from './components/Insights';
 import { Settings } from './components/Settings';
@@ -38,7 +39,13 @@ const Mark: React.FC = () => (
 const App: React.FC = () => {
   const ledgerApi = useLedger();
   const { ledger, loaded, addEntry, deleteEntry, mergeIn } = ledgerApi;
-  const { settings, loaded: settingsLoaded, setOwner, setCaptureCurrency } = useSettings();
+  const {
+    settings,
+    loaded: settingsLoaded,
+    setOwner,
+    setCaptureCurrency,
+    setView
+  } = useSettings();
   const sync = useSync({
     ledger,
     revision: ledgerApi.revision,
@@ -190,7 +197,12 @@ const App: React.FC = () => {
           onOpenSettings={() => setSettingsOpen(true)}
         />
 
-        <Insights entries={ledger.entries} />
+        {/* Balance first when it is switched on — if someone has opted into
+            tracking a budget, the net is the number they came for. Spending
+            stays underneath either way, because that is still the app. */}
+        {settings.view === 'balance' ? <Balance entries={ledger.entries} /> : null}
+
+        <Insights entries={ledger.entries} showIncome={settings.view === 'balance'} />
 
         {!loaded ? (
           <Card>
@@ -289,6 +301,8 @@ const App: React.FC = () => {
       <Settings
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
+        view={settings.view}
+        onViewChange={setView}
         owner={settings.owner}
         onOwnerChange={setOwner}
         captureCurrency={settings.captureCurrency}

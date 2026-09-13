@@ -3,6 +3,17 @@ import { isCurrencyCode } from '../domain/money';
 import { BASE_CURRENCY, type CurrencyCode } from '../domain/types';
 import { KEYS, dbGet, dbSet } from '../storage/db';
 
+/**
+ * What the app is for, as far as the insights are concerned.
+ *
+ * `spending` is the default and the point of the app: where the money goes,
+ * income ignored entirely. `balance` adds the budget-tracker side — income
+ * against outgoings, net, savings rate. Kept as a mode rather than a second app
+ * so the balance side has somewhere to grow without the spending view ever
+ * having to accommodate it.
+ */
+export type ViewMode = 'spending' | 'balance';
+
 export interface Settings {
   /**
    * Who this phone belongs to.
@@ -24,9 +35,12 @@ export interface Settings {
    * forgotten switch is obvious rather than silent.
    */
   captureCurrency: CurrencyCode;
+
+  /** Spending-only by default; the balance view is opt-in. */
+  view: ViewMode;
 }
 
-const DEFAULTS: Settings = { owner: null, captureCurrency: BASE_CURRENCY };
+const DEFAULTS: Settings = { owner: null, captureCurrency: BASE_CURRENCY, view: 'spending' };
 
 export const useSettings = () => {
   const [settings, setSettings] = useState<Settings>(DEFAULTS);
@@ -38,7 +52,8 @@ export const useSettings = () => {
         owner: typeof stored?.owner === 'string' && stored.owner !== '' ? stored.owner : null,
         captureCurrency: isCurrencyCode(stored?.captureCurrency)
           ? stored.captureCurrency
-          : BASE_CURRENCY
+          : BASE_CURRENCY,
+        view: stored?.view === 'balance' ? 'balance' : 'spending'
       });
       setLoaded(true);
     });
@@ -58,5 +73,7 @@ export const useSettings = () => {
     [update]
   );
 
-  return { settings, loaded, setOwner, setCaptureCurrency };
+  const setView = useCallback((view: ViewMode) => update({ view }), [update]);
+
+  return { settings, loaded, setOwner, setCaptureCurrency, setView };
 };
