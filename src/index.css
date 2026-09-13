@@ -4,19 +4,25 @@
 
 :root {
   font-family: 'Space Grotesk', system-ui, sans-serif;
-  background-color: #090b1d;
-  color: #facc15;
+  background-color: #070915;
+  /* v1 set this to #facc15, which made every piece of text on the page yellow.
+     Body copy is ink; yellow is reserved for what it should emphasise. */
+  color: #e8e6f0;
   color-scheme: dark;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 body {
   min-height: 100vh;
   margin: 0;
-  /* Deliberately not `background-attachment: fixed` — iOS Safari handles it
-     badly, repainting the gradient on every scroll frame. */
-  background: radial-gradient(circle at top, #1f2647 0%, #0b1024 65%, #050712 100%);
+  /* Two soft washes rather than one radial: a cool lift at the top and a warm
+     hint of the accent, so the ground has depth without becoming a gradient. */
+  background:
+    radial-gradient(120% 70% at 50% -10%, rgba(52, 66, 140, 0.5) 0%, transparent 60%),
+    radial-gradient(80% 50% at 85% 5%, rgba(250, 204, 21, 0.06) 0%, transparent 55%),
+    #070915;
   background-repeat: no-repeat;
-  /* Keeps content clear of the iPhone notch and home indicator in standalone mode. */
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
     env(safe-area-inset-left);
   -webkit-tap-highlight-color: transparent;
@@ -27,7 +33,7 @@ body {
 }
 
 /* Stop iOS zooming the page when a text field is focused. Anything under 16px
-   triggers it, and this app uses small type everywhere. */
+   triggers it, and this app uses small type throughout. */
 input,
 select,
 textarea {
@@ -46,19 +52,28 @@ input[type='number'],
 input[type='date'] {
   -webkit-appearance: none;
   appearance: none;
-  background-color: #090b1d;
-  color: #facc15;
-  border-radius: 0;
+  background-color: #080b1c;
+  color: #e8e6f0;
+  border-radius: 10px;
   min-width: 0;
+}
+
+select:focus-visible,
+textarea:focus-visible,
+input:focus-visible,
+button:focus-visible,
+[role='button']:focus-visible {
+  outline: 2px solid rgba(250, 204, 21, 0.7);
+  outline-offset: 2px;
 }
 
 /* Native arrow removed with the appearance reset, so draw our own in brand yellow. */
 select {
-  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23facc15' stroke-width='1.5' fill='none' stroke-linecap='square'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 2L6 6.5L11 2' stroke='%23facc15' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 0.75rem center;
+  background-position: right 0.85rem center;
   background-size: 0.7rem;
-  padding-right: 2.25rem;
+  padding-right: 2.4rem;
 }
 
 /* iOS renders the date value in a centred inline block that will not shrink,
@@ -72,15 +87,52 @@ input[type='date']::-webkit-date-and-time-value {
   margin: 0;
 }
 
-/* The picker glyph ships black; invert it so it reads on the dark ground. */
+/* The picker glyph ships black; tint it so it reads on the dark ground. */
 input[type='date']::-webkit-calendar-picker-indicator {
   filter: invert(85%) sepia(60%) saturate(1200%) hue-rotate(350deg) brightness(105%);
-  opacity: 0.85;
+  opacity: 0.8;
   cursor: pointer;
 }
 
-/* Apple's minimum comfortable tap target. Applied to controls rather than to
-   every button so small inline affordances can still opt out deliberately. */
+::placeholder {
+  color: #6a7096;
+  opacity: 1;
+}
+
+/* Apple's minimum comfortable tap target. */
 .tap-target {
   min-height: 44px;
+}
+
+/* Presses need to feel like presses on a touch screen — there is no hover to
+   lean on. Kept subtle and instant. */
+.pressable {
+  transition:
+    background-color 0.15s cubic-bezier(0.16, 1, 0.3, 1),
+    border-color 0.15s cubic-bezier(0.16, 1, 0.3, 1),
+    color 0.15s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.08s ease-out;
+}
+
+.pressable:active {
+  transform: scale(0.97);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .pressable:active {
+    transform: none;
+  }
+}
+
+/* Numbers should never jitter as they change. */
+.tnum {
+  font-variant-numeric: tabular-nums;
 }

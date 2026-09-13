@@ -4,6 +4,7 @@ import { suggestFavourites, type FavouriteDraft } from '../domain/favourites';
 import { CURRENCY_META, formatMoney } from '../domain/money';
 import { HOUSEHOLD } from '../domain/people';
 import type { CurrencyCode, Entry, Favourite } from '../domain/types';
+import { Chip, Label, Segmented, cx } from './ui';
 
 interface FavouritesProps {
   favourites: Favourite[];
@@ -16,8 +17,6 @@ interface FavouritesProps {
   /** The entry currently being composed, offered as "save this". */
   current: { category: CategoryId; currency: CurrencyCode; note: string; person: string | null } | null;
 }
-
-const label = 'text-[10px] font-semibold uppercase tracking-[0.25em] text-brand-neutral';
 
 export const Favourites: React.FC<FavouritesProps> = ({
   favourites,
@@ -54,59 +53,43 @@ export const Favourites: React.FC<FavouritesProps> = ({
 
   return (
     <div>
-      <div className="flex items-center justify-between gap-2">
-        <span className={label}>Favourites</span>
-        <div className="flex border border-brand-line">
-          {HOUSEHOLD.map((person) => (
-            <button
-              key={person}
-              type="button"
-              onClick={() => setTab(person)}
-              aria-pressed={tab === person}
-              className={`tap-target px-4 text-[10px] font-semibold uppercase tracking-[0.15em] transition ${
-                tab === person
-                  ? 'bg-brand-highlight text-brand-midnight'
-                  : 'text-brand-highlight hover:text-brand-amber'
-              }`}
-            >
-              {person}
-            </button>
-          ))}
-        </div>
+      <div className="flex items-center justify-between gap-3">
+        <Label>Favourites</Label>
+        <Segmented
+          ariaLabel="Whose favourites"
+          value={tab}
+          onChange={setTab}
+          options={HOUSEHOLD.map((person) => ({ value: person as string, label: person }))}
+        />
       </div>
 
       {shown.length > 0 ? (
-        <div className="mt-2 flex flex-wrap gap-2">
+        <div className="mt-2.5 flex flex-wrap gap-2">
           {shown.map((favourite) => (
-            <span key={favourite.id} className="flex">
-              <button
-                type="button"
+            <span key={favourite.id} className="relative inline-flex">
+              <Chip
+                dot={CATEGORY_META[favourite.category as CategoryId].color}
                 onClick={() => onApply(favourite)}
-                className="tap-target border border-brand-line px-3 text-left text-[11px] font-semibold text-brand-highlight transition hover:border-brand-highlight hover:text-brand-amber"
+                className={cx(editing && 'pr-9')}
               >
-                <span
-                  className="mr-2 inline-block h-2 w-2 align-middle"
-                  style={{ backgroundColor: CATEGORY_META[favourite.category as CategoryId].color }}
-                  aria-hidden
-                />
                 {favourite.label}
                 {favourite.amount != null ? (
-                  <span className="ml-2 text-brand-neutral">
+                  <span className="tnum text-ink-muted">
                     {formatMoney(favourite.amount, favourite.currency)}
                   </span>
                 ) : null}
                 {favourite.person === null ? (
-                  <span className="ml-2 text-[9px] uppercase tracking-[0.15em] text-brand-neutral">
+                  <span className="rounded-pill bg-surface-base/50 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.12em] text-ink-faint">
                     both
                   </span>
                 ) : null}
-              </button>
+              </Chip>
               {editing ? (
                 <button
                   type="button"
                   onClick={() => onRemove(favourite.id)}
                   aria-label={`Remove favourite ${favourite.label}`}
-                  className="tap-target border border-l-0 border-brand-line px-2 text-[11px] text-brand-accent transition hover:bg-brand-accent/10"
+                  className="pressable absolute right-1 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-brand-accent/15 text-caption text-brand-accent hover:bg-brand-accent/30"
                 >
                   ×
                 </button>
@@ -115,12 +98,12 @@ export const Favourites: React.FC<FavouritesProps> = ({
           ))}
         </div>
       ) : (
-        <p className="mt-2 text-[11px] text-brand-neutral">
-          No favourites for {tab} yet. Save one below, or add a suggestion.
+        <p className="mt-2.5 text-caption text-ink-muted">
+          Nothing saved for {tab} yet — save one below, or add a suggestion.
         </p>
       )}
 
-      <div className="mt-2 flex flex-wrap gap-2">
+      <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-2 text-caption">
         {canSaveCurrent ? (
           <>
             <button
@@ -135,7 +118,7 @@ export const Favourites: React.FC<FavouritesProps> = ({
                   note: current.note
                 })
               }
-              className="tap-target border border-brand-line px-3 text-[10px] font-semibold uppercase tracking-[0.15em] text-brand-highlight transition hover:text-brand-amber"
+              className="tap-target pressable px-1 font-medium text-brand-highlight hover:text-brand-amber"
             >
               + Save for {tab}
             </button>
@@ -151,7 +134,7 @@ export const Favourites: React.FC<FavouritesProps> = ({
                   note: current.note
                 })
               }
-              className="tap-target border border-brand-line px-3 text-[10px] font-semibold uppercase tracking-[0.15em] text-brand-neutral transition hover:text-brand-amber"
+              className="tap-target pressable px-1 text-ink-muted hover:text-brand-highlight"
             >
               + Save for both
             </button>
@@ -161,7 +144,7 @@ export const Favourites: React.FC<FavouritesProps> = ({
           <button
             type="button"
             onClick={() => setEditing((open) => !open)}
-            className="tap-target border border-brand-line px-3 text-[10px] font-semibold uppercase tracking-[0.15em] text-brand-neutral transition hover:text-brand-amber"
+            className="tap-target pressable ml-auto px-1 text-ink-muted hover:text-brand-highlight"
           >
             {editing ? 'Done' : 'Edit'}
           </button>
@@ -171,8 +154,8 @@ export const Favourites: React.FC<FavouritesProps> = ({
       {/* Proposed from this person's own history — never added automatically.
           The household chooses its shortcuts; the app only points at patterns. */}
       {suggestions.length > 0 ? (
-        <div className="mt-3 border-t border-brand-line pt-3">
-          <p className="text-[10px] uppercase tracking-[0.18em] text-brand-neutral">
+        <div className="mt-3 rounded-control border border-dashed border-edge bg-surface-inset/50 p-3">
+          <p className="text-micro uppercase tracking-[0.14em] text-ink-faint">
             {tab} logs these often
           </p>
           <div className="mt-2 flex flex-wrap gap-2">
@@ -190,10 +173,11 @@ export const Favourites: React.FC<FavouritesProps> = ({
                     note: suggestion.note
                   })
                 }
-                className="tap-target border border-dashed border-brand-line px-3 text-[11px] text-brand-neutral transition hover:border-brand-highlight hover:text-brand-amber"
+                className="tap-target pressable inline-flex items-center gap-2 rounded-pill border border-edge px-3.5 text-caption text-ink-muted hover:border-brand-highlight hover:text-brand-highlight"
               >
-                + {suggestion.label}
-                <span className="ml-2 text-[9px] uppercase tracking-[0.15em]">
+                <span className="text-brand-highlight">+</span>
+                {suggestion.label}
+                <span className="tnum text-ink-faint">
                   ×{suggestion.count} · {CURRENCY_META[suggestion.currency].symbol}
                   {suggestion.typicalAmount}
                 </span>

@@ -6,14 +6,15 @@ import {
   INCOME_CATEGORY_IDS,
   type CategoryId
 } from '../domain/categories';
+import type { FavouriteDraft } from '../domain/favourites';
 import { CURRENCY_META, formatMoney } from '../domain/money';
 import { parseEntryText } from '../domain/parseEntry';
 import { HOUSEHOLD } from '../domain/people';
 import { learnNoteAssociations, suggestCategoryChips } from '../domain/suggestions';
-import type { FavouriteDraft } from '../domain/favourites';
 import type { CurrencyCode, Entry, Favourite } from '../domain/types';
 import type { AddResult, EntryDraft } from '../hooks/useLedger';
 import { Favourites } from './Favourites';
+import { Button, Card, Chip, Label, Segmented, cx } from './ui';
 
 interface CaptureProps {
   entries: Entry[];
@@ -33,14 +34,7 @@ const dayOffset = (days: number): string => {
 };
 
 const field =
-  'tap-target w-full border border-brand-line bg-brand-midnight px-3 py-2 text-sm text-brand-highlight focus:border-brand-highlight focus:outline-none';
-const label = 'text-[10px] font-semibold uppercase tracking-[0.25em] text-brand-neutral';
-const chip = (active: boolean): string =>
-  `tap-target border px-3 text-[11px] font-semibold transition ${
-    active
-      ? 'border-brand-highlight bg-brand-highlight text-brand-midnight'
-      : 'border-brand-line text-brand-highlight hover:border-brand-highlight hover:text-brand-amber'
-  }`;
+  'tap-target w-full rounded-control border border-edge bg-surface-inset px-3.5 py-2.5 text-body text-ink focus:border-brand-highlight focus:outline-none';
 
 export const Capture: React.FC<CaptureProps> = ({
   entries,
@@ -61,7 +55,6 @@ export const Capture: React.FC<CaptureProps> = ({
   const [categoryOverride, setCategoryOverride] = useState<CategoryId | null>(null);
   const [dateOverride, setDateOverride] = useState<string | null>(null);
   const [noteOverride, setNoteOverride] = useState<string | null>(null);
-  // Defaults to whoever's phone this is — one fewer tap on the common case.
   const [person, setPerson] = useState<string>(owner ?? '');
 
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -70,10 +63,7 @@ export const Capture: React.FC<CaptureProps> = ({
   const [problem, setProblem] = useState<string | null>(null);
 
   const learned = useMemo(() => learnNoteAssociations(entries), [entries]);
-  const chips = useMemo(
-    () => suggestCategoryChips(entries, { kind, limit: 6 }),
-    [entries, kind]
-  );
+  const chips = useMemo(() => suggestCategoryChips(entries, { kind, limit: 6 }), [entries, kind]);
   const parsed = useMemo(() => parseEntryText(text, { learned }), [text, learned]);
 
   const category: CategoryId =
@@ -86,7 +76,6 @@ export const Capture: React.FC<CaptureProps> = ({
   const amount = parsed.amount;
   const valid = amount != null && amount > 0;
 
-  // Only worth showing when the parser understood more than a bare number.
   const showUnderstood =
     valid && (parsed.category != null || parsed.date != null || parsed.note !== '');
 
@@ -137,7 +126,7 @@ export const Capture: React.FC<CaptureProps> = ({
       reset();
       setFeedback(
         result.approximateRate
-          ? `Saved ${formatMoney(result.entry.baseAmount)} using the nearest available rate — correctable later.`
+          ? `Saved ${formatMoney(result.entry.baseAmount)} at the nearest available rate.`
           : `Saved ${formatMoney(result.entry.baseAmount)}.`
       );
     }
@@ -147,250 +136,229 @@ export const Capture: React.FC<CaptureProps> = ({
   const options = kind === 'income' ? INCOME_CATEGORY_IDS : EXPENSE_CATEGORY_IDS;
 
   return (
-    <form onSubmit={submit} className="border border-brand-line bg-brand-ocean/80 px-4 py-5 shadow-panel">
-      <div className="flex items-center justify-between">
-        <h2 className={label}>Add an entry</h2>
-        <div className="flex border border-brand-line">
-          {(['expense', 'income'] as const).map((option) => (
-            <button
-              key={option}
-              type="button"
-              onClick={() => {
-                setKind(option);
-                setCategoryOverride(null);
-              }}
-              aria-pressed={kind === option}
-              className={`tap-target px-4 text-[10px] font-semibold uppercase tracking-[0.2em] transition ${
-                kind === option
-                  ? 'bg-brand-highlight text-brand-midnight'
-                  : 'text-brand-highlight hover:text-brand-amber'
-              }`}
-            >
-              {option === 'expense' ? 'Out' : 'In'}
-            </button>
-          ))}
+    <Card className="animate-rise-in">
+      <form onSubmit={submit}>
+        <div className="flex items-center justify-between gap-3">
+          <Label>Add an entry</Label>
+          <Segmented
+            ariaLabel="Money in or out"
+            value={kind}
+            onChange={(next) => {
+              setKind(next);
+              setCategoryOverride(null);
+            }}
+            options={[
+              { value: 'expense', label: 'Out' },
+              { value: 'income', label: 'In' }
+            ]}
+          />
         </div>
-      </div>
 
-      {/* One field for both the plain case and the fast case: "12.50" works,
-          and so does "12.50 tesco yesterday". */}
-      <div className="mt-3 flex items-stretch gap-2">
-        <div className="flex border border-brand-line">
-          {(Object.keys(CURRENCY_META) as CurrencyCode[]).map((code) => (
-            <button
-              key={code}
-              type="button"
-              onClick={() => setCurrency(code)}
-              aria-pressed={currency === code}
-              className={`px-3 text-sm font-semibold transition ${
-                currency === code
-                  ? 'bg-brand-highlight text-brand-midnight'
-                  : 'text-brand-highlight hover:text-brand-amber'
-              }`}
-            >
-              {CURRENCY_META[code].symbol}
-            </button>
-          ))}
+        {/* The amount is the hero of this screen, so it gets the weight. The
+            currency sits inside the same control rather than beside it, which
+            reads as one field instead of two. */}
+        <div
+          className={cx(
+            'mt-4 flex items-stretch overflow-hidden rounded-control border bg-surface-inset transition-colors',
+            valid ? 'border-brand-highlight/60 shadow-glow' : 'border-edge'
+          )}
+        >
+          {/* One button rather than a stacked pair: there are only two
+              currencies, so tapping to switch is faster than choosing, and it
+              leaves a proper 44px target instead of two cramped ones. */}
+          <button
+            type="button"
+            onClick={() => setCurrency(currency === 'GBP' ? 'EUR' : 'GBP')}
+            aria-label={`Currency: ${CURRENCY_META[currency].label}. Tap to switch.`}
+            className="pressable tap-target flex w-14 shrink-0 flex-col items-center justify-center gap-0.5 border-r border-edge bg-surface-high/40 text-ink hover:bg-surface-high"
+          >
+            <span className="text-figure font-semibold leading-none text-brand-highlight">
+              {CURRENCY_META[currency].symbol}
+            </span>
+            <span className="text-[9px] uppercase tracking-[0.1em] text-ink-faint" aria-hidden>
+              swap
+            </span>
+          </button>
+          <input
+            value={text}
+            onChange={(event) => setText(event.target.value)}
+            inputMode="decimal"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="none"
+            spellCheck={false}
+            placeholder="12.50 tesco"
+            aria-label="Amount, or amount with a description"
+            className="tnum min-w-0 flex-1 border-0 bg-transparent px-4 py-4 text-display font-semibold text-brand-highlight placeholder:text-lead placeholder:font-normal placeholder:tracking-normal placeholder:text-ink-faint focus:outline-none"
+          />
         </div>
-        <input
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          inputMode="decimal"
-          autoComplete="off"
-          autoCorrect="off"
-          autoCapitalize="none"
-          spellCheck={false}
-          placeholder="12.50 tesco"
-          aria-label="Amount, or amount with a description"
-          className="min-w-0 flex-1 border border-brand-line bg-brand-midnight px-3 py-3 text-2xl font-semibold tabular-nums text-brand-highlight placeholder:text-base placeholder:font-normal placeholder:tracking-normal placeholder:text-brand-neutral/40 focus:border-brand-highlight focus:outline-none"
-        />
-      </div>
 
-      {/* The parser is allowed to be wrong, never silently wrong. */}
-      {showUnderstood ? (
-        <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-brand-neutral">
-          <span className="font-semibold text-brand-highlight">
-            {formatMoney(amount, currency)}
-          </span>
-          {parsed.category != null ? (
-            <>
-              <span aria-hidden>·</span>
-              <span style={{ color: CATEGORY_META[parsed.category.category].color }}>
+        {/* The parser is allowed to be wrong, never silently wrong. */}
+        {showUnderstood ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-caption text-ink-muted">
+            {parsed.category != null ? (
+              <span className="inline-flex items-center gap-1.5 rounded-pill bg-surface-high/70 px-2.5 py-1">
+                <span
+                  className="h-2 w-2 rounded-full"
+                  style={{ backgroundColor: CATEGORY_META[parsed.category.category].color }}
+                  aria-hidden
+                />
                 {CATEGORY_META[parsed.category.category].label}
               </span>
-            </>
-          ) : null}
-          {parsed.dateLabel != null ? (
-            <>
-              <span aria-hidden>·</span>
-              <span>{format(new Date(`${date}T12:00:00`), 'd MMM')}</span>
-            </>
-          ) : null}
-          {parsed.note !== '' ? (
-            <>
-              <span aria-hidden>·</span>
-              <span className="italic">“{parsed.note}”</span>
-            </>
-          ) : null}
-        </p>
-      ) : null}
+            ) : null}
+            {parsed.dateLabel != null ? (
+              <span className="rounded-pill bg-surface-high/70 px-2.5 py-1">
+                {format(new Date(`${date}T12:00:00`), 'd MMM')}
+              </span>
+            ) : null}
+            {parsed.note !== '' ? (
+              <span className="rounded-pill bg-surface-high/70 px-2.5 py-1 italic">
+                {parsed.note}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
 
-      <div className="mt-4">
-        <Favourites
-          favourites={favourites}
-          entries={entries}
-          owner={owner}
-          onApply={applyFavourite}
-          onAdd={onAddFavourite}
-          onRemove={onRemoveFavourite}
-          current={{ category, currency, note, person: person === '' ? null : person }}
-        />
-      </div>
-
-      <div className="mt-4">
-        <div className="flex items-center justify-between">
-          <span className={label}>Category</span>
-          <span className="text-[10px] uppercase tracking-[0.2em] text-brand-neutral">
-            {CATEGORY_META[category].label}
-          </span>
+        <div className="mt-5">
+          <Favourites
+            favourites={favourites}
+            entries={entries}
+            owner={owner}
+            onApply={applyFavourite}
+            onAdd={onAddFavourite}
+            onRemove={onRemoveFavourite}
+            current={{ category, currency, note, person: person === '' ? null : person }}
+          />
         </div>
-        {/* Ranked by what this household actually uses, not a fixed list. */}
-        <div className="mt-2 flex flex-wrap gap-2">
-          {chips.map((id) => (
-            <button
-              key={id}
-              type="button"
-              onClick={() => setCategoryOverride(id)}
-              aria-pressed={category === id}
-              className={chip(category === id)}
-            >
-              <span
-                className="mr-2 inline-block h-2 w-2 align-middle"
-                style={{ backgroundColor: CATEGORY_META[id].color }}
-                aria-hidden
-              />
-              {CATEGORY_META[id].label}
-            </button>
-          ))}
-        </div>
-        <select
-          value={category}
-          onChange={(event) => setCategoryOverride(event.target.value as CategoryId)}
-          aria-label="All categories"
-          className={`${field} mt-2`}
-        >
-          {options.map((id) => (
-            <option key={id} value={id}>
-              {CATEGORY_META[id].label}
-            </option>
-          ))}
-        </select>
-      </div>
 
-      <button
-        type="button"
-        onClick={() => setDetailsOpen((open) => !open)}
-        aria-expanded={detailsOpen}
-        className="tap-target mt-2 flex w-full items-center text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-neutral transition hover:text-brand-amber"
-      >
-        {detailsOpen ? '− Fewer options' : '+ Date, person, note'}
-      </button>
-
-      {detailsOpen ? (
-        <div className="mt-3 space-y-4 border-t border-brand-line pt-4">
-          <div>
-            <div className="flex items-center justify-between">
-              <span className={label}>Date</span>
-              <div className="flex gap-1">
-                {[
-                  { label: 'Today', value: dayOffset(0) },
-                  { label: 'Yesterday', value: dayOffset(-1) }
-                ].map((option) => (
-                  <button
-                    key={option.label}
-                    type="button"
-                    onClick={() => setDateOverride(option.value)}
-                    aria-pressed={date === option.value}
-                    className={`tap-target border px-3 text-[10px] font-semibold uppercase tracking-[0.15em] transition ${
-                      date === option.value
-                        ? 'border-brand-highlight text-brand-amber'
-                        : 'border-brand-line text-brand-neutral hover:text-brand-amber'
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <input
-              type="date"
-              value={date}
-              onChange={(event) => setDateOverride(event.target.value)}
-              className={`${field} mt-1`}
-            />
+        <div className="mt-5">
+          <div className="flex items-center justify-between gap-3">
+            <Label>Category</Label>
+            <span className="text-caption text-ink">{CATEGORY_META[category].label}</span>
           </div>
 
-          <div>
-            <span className={label}>Person</span>
-            <div className="mt-1 flex border border-brand-line">
-              <button
-                type="button"
-                onClick={() => setPerson('')}
-                aria-pressed={person === ''}
-                className={`tap-target flex-1 px-2 text-xs font-semibold transition ${
-                  person === ''
-                    ? 'bg-brand-highlight text-brand-midnight'
-                    : 'text-brand-highlight hover:text-brand-amber'
-                }`}
+          {/* Ranked by what this household actually uses, not a fixed list. */}
+          <div className="mt-2.5 flex flex-wrap gap-2">
+            {chips.map((id) => (
+              <Chip
+                key={id}
+                active={category === id}
+                dot={CATEGORY_META[id].color}
+                onClick={() => setCategoryOverride(id)}
               >
-                Not set
-              </button>
-              {HOUSEHOLD.map((name) => (
-                <button
-                  key={name}
-                  type="button"
-                  onClick={() => setPerson(name)}
-                  aria-pressed={person === name}
-                  className={`tap-target flex-1 border-l border-brand-line px-2 text-xs font-semibold transition ${
-                    person === name
-                      ? 'bg-brand-highlight text-brand-midnight'
-                      : 'text-brand-highlight hover:text-brand-amber'
-                  }`}
-                >
-                  {name}
-                </button>
-              ))}
+                {CATEGORY_META[id].label}
+              </Chip>
+            ))}
+          </div>
+
+          <select
+            value={category}
+            onChange={(event) => setCategoryOverride(event.target.value as CategoryId)}
+            aria-label="All categories"
+            className={cx(field, 'mt-2.5')}
+          >
+            {options.map((id) => (
+              <option key={id} value={id}>
+                {CATEGORY_META[id].label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => setDetailsOpen((open) => !open)}
+          aria-expanded={detailsOpen}
+          className="tap-target pressable mt-3 flex w-full items-center gap-2 text-caption font-medium text-ink-muted hover:text-brand-highlight"
+        >
+          <span
+            className={cx(
+              'inline-block transition-transform duration-200 ease-out',
+              detailsOpen && 'rotate-90'
+            )}
+            aria-hidden
+          >
+            ›
+          </span>
+          Date, person, note
+          {!detailsOpen && (person !== '' || note !== '' || date !== dayOffset(0)) ? (
+            <span className="ml-auto truncate text-ink-faint">
+              {[person, note, date !== dayOffset(0) ? format(new Date(`${date}T12:00:00`), 'd MMM') : null]
+                .filter((part) => part != null && part !== '')
+                .join(' · ')}
+            </span>
+          ) : null}
+        </button>
+
+        {detailsOpen ? (
+          <div className="mt-3 animate-rise-in space-y-4 rounded-control border border-edge bg-surface-inset/60 p-4">
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <Label>Date</Label>
+                <div className="flex gap-1.5">
+                  {[
+                    { label: 'Today', value: dayOffset(0) },
+                    { label: 'Yesterday', value: dayOffset(-1) }
+                  ].map((option) => (
+                    <Chip
+                      key={option.label}
+                      active={date === option.value}
+                      onClick={() => setDateOverride(option.value)}
+                      className="!px-3"
+                    >
+                      {option.label}
+                    </Chip>
+                  ))}
+                </div>
+              </div>
+              <input
+                type="date"
+                value={date}
+                onChange={(event) => setDateOverride(event.target.value)}
+                className={cx(field, 'mt-2')}
+              />
+            </div>
+
+            <div>
+              <Label>Person</Label>
+              <Segmented
+                ariaLabel="Who this entry is for"
+                className="mt-2 flex w-full"
+                value={person}
+                onChange={setPerson}
+                options={[
+                  { value: '', label: 'Not set' },
+                  ...HOUSEHOLD.map((name) => ({ value: name as string, label: name }))
+                ]}
+              />
+            </div>
+
+            <div>
+              <Label>Note</Label>
+              <input
+                value={note}
+                onChange={(event) => setNoteOverride(event.target.value)}
+                maxLength={240}
+                placeholder="Optional"
+                className={cx(field, 'mt-2')}
+              />
             </div>
           </div>
+        ) : null}
 
-          <div>
-            <span className={label}>Note</span>
-            <input
-              value={note}
-              onChange={(event) => setNoteOverride(event.target.value)}
-              maxLength={240}
-              placeholder="Optional"
-              className={`${field} mt-1`}
-            />
-          </div>
+        <Button type="submit" variant="primary" full disabled={!valid || busy} className="mt-5">
+          {busy ? 'Saving…' : valid ? `Add ${formatMoney(amount, currency)}` : 'Add entry'}
+        </Button>
 
-        </div>
-      ) : null}
-
-      <button
-        type="submit"
-        disabled={!valid || busy}
-        className="tap-target mt-5 w-full border border-brand-line bg-brand-highlight px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.25em] text-brand-midnight transition hover:bg-brand-amber disabled:cursor-not-allowed disabled:bg-brand-slate/60 disabled:text-brand-neutral/50"
-      >
-        {busy ? 'Saving…' : valid ? `Add ${formatMoney(amount, currency)}` : 'Add entry'}
-      </button>
-
-      {problem != null ? (
-        <p className="mt-3 border border-brand-accent bg-brand-accent/10 px-3 py-2 text-[11px] text-brand-accent">
-          {problem}
-        </p>
-      ) : null}
-      {feedback != null ? <p className="mt-3 text-[11px] text-brand-positive">{feedback}</p> : null}
-    </form>
+        {problem != null ? (
+          <p className="mt-3 rounded-control border border-brand-accent/40 bg-brand-accent/10 px-3.5 py-2.5 text-caption text-brand-accent">
+            {problem}
+          </p>
+        ) : null}
+        {feedback != null ? (
+          <p className="mt-3 animate-rise-in text-caption text-brand-positive">{feedback}</p>
+        ) : null}
+      </form>
+    </Card>
   );
 };

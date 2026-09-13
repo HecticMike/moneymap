@@ -48,7 +48,16 @@ await page.waitForTimeout(1200);
 
 const findings = await page.evaluate(() => {
   const viewport = document.documentElement.clientWidth;
-  const out = { viewport, horizontalScroll: null, overflowing: [], overlaps: [], smallTargets: [] };
+  const out = {
+    viewport,
+    horizontalScroll: null,
+    overflowing: [],
+    overlaps: [],
+    /** Fails the audit. */
+    smallTargets: [],
+    /** Reported only — short but wide enough to be safe. */
+    tightTargets: []
+  };
 
   if (document.documentElement.scrollWidth > viewport + 1) {
     out.horizontalScroll = {
@@ -90,10 +99,23 @@ const findings = await page.evaluate(() => {
       });
     }
 
-    // Interactive controls below Apple's 44pt minimum tap target.
+    // Tap targets, in two tiers.
+    //
+    // Apple asks for 44x44pt. Taken literally that also condemns segmented
+    // controls, which iOS itself ships at 32pt — because a short *but wide*
+    // control is a different risk: a vertical mis-tap lands on nothing, whereas
+    // a small square button next to a delete icon lands on the delete icon.
+    //
+    // So: genuinely cramped targets fail the audit; short-but-wide ones are
+    // reported for review and do not. Nothing below 32pt is excused.
     if (/^(button|a|select|input)$/i.test(el.tagName) && el.type !== 'file' && el.type !== 'hidden') {
-      if (rect.height < 44) {
-        out.smallTargets.push({ el: describe(el), height: Math.round(rect.height) });
+      const height = Math.round(rect.height);
+      const width = Math.round(rect.width);
+
+      if (height < 32 || (height < 44 && width < 72)) {
+        out.smallTargets.push({ el: describe(el), height, width });
+      } else if (height < 44) {
+        out.tightTargets.push({ el: describe(el), height, width });
       }
     }
   }

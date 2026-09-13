@@ -4,6 +4,94 @@ Newest entry first. Factual and concise; partial work is stated as partial.
 
 ---
 
+## 2026-09-13 — Visual modernisation
+
+### Goal
+Requested: keep the base colours and Space Grotesk, everything else open.
+
+### The two changes that did most of the work
+1. **Text is no longer yellow.** v1 set `color: #facc15` on `:root`, so body
+   copy, labels, numbers and headings were all the same saturated yellow. When
+   everything is the accent, nothing is — and long text in yellow on navy is
+   genuinely hard to read. Body is now `ink`; yellow is spent on amounts, active
+   states and actions, where it means something. The app still reads as
+   midnight-and-yellow, arguably more so.
+2. **Surfaces are layered, not uniform.** Every panel used to be the same 1px
+   box on the same translucent fill, so eight sections read as eight identical
+   rectangles with no grouping. There is now an elevation ladder —
+   base → raised → high, with `inset` for content wells — plus real shadows.
+
+### Also
+- **Type scale.** v1 lived almost entirely at 10–11px. Proper steps from
+  `micro` to `display`, with the month total as a genuine hero figure.
+- **Letter-spacing dialled back** from `0.3em` to `0.16em`, and uppercase
+  reserved for real section labels so it signals something again.
+- **Radius introduced** via two tokens (`card`, `control`). Setting both to 0
+  restores v1's hard-edged look in one edit.
+- **Motion**: press feedback on every control, rise-in for appearing content,
+  bars that grow on render. All disabled under `prefers-reduced-motion`.
+- **Shared primitives** (`components/ui.tsx`) — Card, Label, Button, Segmented,
+  Chip, Well, Badge. Long class strings repeated at each call site is how a
+  design drifts.
+- **Bars in the insights** replace the 0.5px hairlines; relative size is the
+  thing being communicated.
+- Currency became a single swap button rather than a stacked pair: two
+  currencies, so tapping to switch beats choosing, and it leaves one proper
+  target instead of two cramped ones.
+- "Today"/"Yesterday" in the Recent list instead of a date.
+
+### Two bugs caught by looking at the screenshots
+- **"Rent" was suggested as a favourite directly beneath the Rent shortcut
+  already on screen.** Two causes: the dedup only checked the person's own
+  favourites and ignored shared ones, *and* the key fell back to the favourite's
+  label when it had no note — producing `living_home_rent:rent`, which entries
+  can never generate since they key as `living_home_rent`. Both fixed, with a
+  test.
+- **Tertiary text and the disabled primary button were too dim.** `ink-faint`
+  was below ~4.5:1 at 11px; the button was dimmed by colour *and* a blanket
+  opacity. Ink tiers lightened, blanket opacity removed in favour of
+  per-variant disabled colours.
+
+### Tap-target rule, refined honestly
+The audit flagged the segmented controls. Apple asks for 44×44, but iOS ships
+its own segmented control at 32pt — because a short *but wide* control is a
+different risk: a vertical mis-tap lands on nothing, whereas a small square
+button beside a delete icon lands on the delete icon. The audit now fails on
+genuinely cramped targets (`height < 32`, or `< 44` while narrower than 72) and
+reports short-but-wide ones without failing.
+
+On measuring, these segments were 35–63px wide — no width to compensate — so
+they were raised to the full 44px rather than excused.
+
+### Files changed
+New: `src/components/ui.tsx`.
+Rewritten: `tailwind.config.ts`, `src/index.css`, `src/App.tsx`,
+`src/components/{Capture,Favourites,Insights,SyncPanel}.tsx`.
+Modified: `src/domain/{favourites,favourites.test}.ts`,
+`scripts/audit-layout.mjs`.
+
+### Checks run
+- `npm test` — **170 passed**
+- `npm run verify:all` — **59 browser checks, all passing** — so the redesign
+  changed no behaviour
+- `npm run audit:layout` — clean on iPhone 15 and iPhone 13 Mini
+- typecheck and build clean; precache 684 KB
+
+### Known issues / blockers
+- Reviewed in WebKit-in-Playwright, not on a physical iPhone.
+- `radius` is a judgement call: v1 was hard-edged, and "modernise" was read as
+  permission to soften. Two tokens to zero reverts it.
+- Favourites sync still unproven across two real devices.
+- Recurring detection still unvalidated against real data.
+- `icon-512.png` still 309 KB; no UI to re-rate an approximate-FX entry.
+
+### Next recommended task
+Use it for a fortnight. The outstanding items are small and the useful feedback
+now is whether the new look survives daily use — particularly whether yellow
+still feels like the app's colour when it is no longer on every word.
+
+---
+
 ## 2026-09-13 — Per-person favourites, synced
 
 ### Goal

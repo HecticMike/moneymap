@@ -166,6 +166,22 @@ describe('suggestFavourites', () => {
     expect(suggestFavourites(entries, 'Miguel', existing, { now: NOW })).toHaveLength(0);
   });
 
+  it('does not propose something already covered by a shared favourite', () => {
+    // Shared favourites appear on every tab, so proposing one again offers to
+    // add "Rent" directly beneath the Rent shortcut already on screen.
+    const entries = [
+      entry('Miguel', 'living_home_rent', '', 1250, 5),
+      entry('Miguel', 'living_home_rent', '', 1250, 35),
+      entry('Miguel', 'living_home_rent', '', 1250, 65)
+    ];
+    // Label "Rent", no note — exactly how a shared bill favourite is saved.
+    const shared = [
+      fav({ id: 'shared', person: null, category: 'living_home_rent', label: 'Rent', note: '' })
+    ];
+
+    expect(suggestFavourites(entries, 'Miguel', shared, { now: NOW })).toHaveLength(0);
+  });
+
   it('still suggests it for the other person', () => {
     const entries = [
       entry('Ines', 'living_home_supermarket', 'Tesco', 45, 2),

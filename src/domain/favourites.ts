@@ -120,10 +120,18 @@ export const suggestFavourites = (
   const limit = options.limit ?? 5;
   const minCount = options.minCount ?? 3;
 
+  // Shared favourites show on every person's tab, so a pattern already covered
+  // by one must not be proposed again — otherwise the app offers to add "Rent"
+  // directly underneath the Rent shortcut it is already showing.
+  // Keyed on the note, never the label. Falling back to the label looked
+  // harmless but produced a key entries can never generate: a shared "Rent"
+  // favourite with no note keyed as `living_home_rent:rent`, while the rent
+  // entries themselves key as `living_home_rent`, so the dedup silently missed
+  // and the app offered to add a favourite it was already displaying.
   const alreadySaved = new Set(
     existing
-      .filter((favourite) => favourite.person === person)
-      .map((favourite) => shortcutKey(favourite.category, favourite.note || favourite.label))
+      .filter((favourite) => favourite.person === person || favourite.person === null)
+      .map((favourite) => shortcutKey(favourite.category, favourite.note))
   );
 
   const halfLifeMs = 60 * 24 * 60 * 60 * 1000;
