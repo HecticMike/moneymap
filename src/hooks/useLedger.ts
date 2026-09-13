@@ -1,9 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CategoryId } from '../domain/categories';
+import { createFavourite, markFavouriteUsed, type FavouriteDraft } from '../domain/favourites';
 import { resolveRate } from '../domain/fx';
 import { roundMoney, toBaseAmount } from '../domain/money';
-import { emptyLedger, type CurrencyCode, type Entry, type EntrySource, type LedgerState } from '../domain/types';
-import { compareByDateDesc, mergeLedgers } from '../sync/merge';
+import {
+  emptyLedger,
+  type CurrencyCode,
+  type Entry,
+  type EntrySource,
+  type Favourite,
+  type LedgerState
+} from '../domain/types';
+import { compareByDateDesc, compareFavourites, mergeLedgers } from '../sync/merge';
 import { loadLedger, saveLedger } from '../storage/ledgerStore';
 
 export interface EntryDraft {
@@ -81,6 +89,7 @@ export const useLedger = () => {
       };
 
       setLedger((current) => ({
+        ...current,
         entries: [entry, ...current.entries].sort(compareByDateDesc),
         tombstones: current.tombstones.filter((tombstone) => tombstone.id !== entry.id)
       }));
@@ -94,6 +103,7 @@ export const useLedger = () => {
   const updateEntry = useCallback(
     (id: string, patch: Partial<Omit<Entry, 'id' | 'createdAt'>>) => {
       setLedger((current) => ({
+        ...current,
         entries: current.entries
           .map((entry) => {
             if (entry.id !== id) return entry;
@@ -116,9 +126,75 @@ export const useLedger = () => {
   const deleteEntry = useCallback(
     (id: string) => {
       setLedger((current) => ({
+        ...current,
         entries: current.entries.filter((entry) => entry.id !== id),
         tombstones: [
           ...current.tombstones.filter((tombstone) => tombstone.id !== id),
+          { id, deletedAt: new Date().toISOString() }
+        ]
+      }));
+      bump();
+    },
+    [bump]
+  );
+
+  // --- favourites -----------------------------------------------------------
+  // These live in the ledger rather than in device-local storage precisely so
+  // they sync: each person's shortcuts have to reach the other person's phone.
+
+  const addFavourite = useCallback(
+    (draft: FavouriteDraft) => {
+      const favourite = createFavourite(draft);
+      setLedger((current) => ({
+        ...current,
+        favourites: [...current.favourites, favourite].sort(compareFavourites),
+        favouriteTombstones: current.favouriteTombstones.filter(
+          (tombstone) => tombstone.id !== favourite.id
+        )
+      }));
+      bump();
+      return favourite;
+    },
+    [bump]
+  );
+
+  const useFavourite = useCallback(
+    (id: string) => {
+      setLedger((current) => ({
+        ...current,
+        favourites: current.favourites
+          .map((favourite) => (favourite.id === id ? markFavouriteUsed(favourite) : favourite))
+          .sort(compareFavourites)
+      }));
+      bump();
+    },
+    [bump]
+  );
+
+  const updateFavourite = useCallback(
+    (id: string, patch: Partial<Omit<Favourite, 'id' | 'createdAt'>>) => {
+      setLedger((current) => ({
+        ...current,
+        favourites: current.favourites
+          .map((favourite) =>
+            favourite.id === id
+              ? { ...favourite, ...patch, updatedAt: new Date().toISOString() }
+              : favourite
+          )
+          .sort(compareFavourites)
+      }));
+      bump();
+    },
+    [bump]
+  );
+
+  const removeFavourite = useCallback(
+    (id: string) => {
+      setLedger((current) => ({
+        ...current,
+        favourites: current.favourites.filter((favourite) => favourite.id !== id),
+        favouriteTombstones: [
+          ...current.favouriteTombstones.filter((tombstone) => tombstone.id !== id),
           { id, deletedAt: new Date().toISOString() }
         ]
       }));
@@ -147,6 +223,10 @@ export const useLedger = () => {
     addEntry,
     updateEntry,
     deleteEntry,
+    addFavourite,
+    useFavourite,
+    updateFavourite,
+    removeFavourite,
     mergeIn,
     markSynced
   };

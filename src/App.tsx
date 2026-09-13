@@ -5,9 +5,10 @@ import { formatMoney } from './domain/money';
 import { Capture } from './components/Capture';
 import { Insights } from './components/Insights';
 import { SyncPanel } from './components/SyncPanel';
+import { HOUSEHOLD } from './domain/people';
 import { useLedger } from './hooks/useLedger';
+import { useSettings } from './hooks/useSettings';
 import { useSync } from './hooks/useSync';
-import { useTemplates } from './hooks/useTemplates';
 import { parseLedgerFile, type ParseReport } from './sync/ledgerFile';
 
 const panel = 'border border-brand-line bg-brand-ocean/80 px-4 py-5 shadow-panel';
@@ -16,7 +17,7 @@ const label = 'text-[10px] font-semibold uppercase tracking-[0.25em] text-brand-
 const App: React.FC = () => {
   const ledgerApi = useLedger();
   const { ledger, loaded, addEntry, deleteEntry, mergeIn } = ledgerApi;
-  const templateApi = useTemplates();
+  const { settings, loaded: settingsLoaded, setOwner } = useSettings();
   const sync = useSync({
     ledger,
     revision: ledgerApi.revision,
@@ -79,13 +80,38 @@ const App: React.FC = () => {
           </span>
         </header>
 
+        {/* Asked once, then never again. Knowing whose phone this is defaults
+            the person on every entry and opens the right favourites tab. */}
+        {settingsLoaded && settings.owner == null ? (
+          <section className={panel}>
+            <h2 className={label}>Whose phone is this?</h2>
+            <p className="mt-2 text-[11px] text-brand-neutral">
+              Entries default to this person, and their favourites open first. You can still log
+              for anyone.
+            </p>
+            <div className="mt-3 flex border border-brand-line">
+              {HOUSEHOLD.map((person) => (
+                <button
+                  key={person}
+                  type="button"
+                  onClick={() => setOwner(person)}
+                  className="tap-target flex-1 border-r border-brand-line text-xs font-semibold text-brand-highlight transition last:border-r-0 hover:bg-brand-highlight hover:text-brand-midnight"
+                >
+                  {person}
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
         <Capture
           entries={ledger.entries}
-          templates={templateApi.templates}
+          favourites={ledger.favourites}
+          owner={settings.owner}
           onAdd={addEntry}
-          onUseTemplate={templateApi.useTemplate}
-          onSaveTemplate={templateApi.addTemplate}
-          onRemoveTemplate={templateApi.removeTemplate}
+          onUseFavourite={ledgerApi.useFavourite}
+          onAddFavourite={ledgerApi.addFavourite}
+          onRemoveFavourite={ledgerApi.removeFavourite}
         />
 
         <Insights entries={ledger.entries} />

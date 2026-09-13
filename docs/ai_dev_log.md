@@ -4,6 +4,89 @@ Newest entry first. Factual and concise; partial work is stated as partial.
 
 ---
 
+## 2026-09-13 — Per-person favourites, synced
+
+### Goal
+Each person keeps their own chosen shortcuts, they reach the other person's
+phone, and either phone can log for either person. Chosen by the household, not
+inferred for them.
+
+### Schema change — the risky part
+`LedgerState` gained `favourites` and `favouriteTombstones`; the Drive file is
+now **schema 4**. The *file name* deliberately did not change. A second file
+would leave the two phones reading different backups until both happened to
+update, which is worse than a short window where an older client round-trips
+and drops the favourites array. Entries are never at risk either way, and a
+lost favourite is one tap to re-add.
+
+Both phones should be opened once to pick up the new build before relying on
+favourite sync.
+
+### Completed
+- **Merge generalised** (`mergeCollection`) — favourites get the *same*
+  convergence guarantees as entries rather than a second hand-written
+  implementation. Commutativity and idempotence are retested with favourites
+  present, including the case where an entry and a favourite share an id.
+- **`Favourite.person` does double duty**: whose list it appears in, and who an
+  entry made from it is attributed to. That is exactly what makes "log my wife's
+  spending from my phone" work. `null` means shared.
+- **Device owner setting** (`useSettings`) — asked once, stored locally and
+  deliberately *not* synced, since each phone would otherwise overwrite the
+  other's answer forever. Defaults the person on new entries and opens the right
+  favourites tab.
+- **Suggestions per person** (`suggestFavourites`) — proposes patterns from that
+  person's own entries, never adds one without a tap, never re-proposes
+  something already saved, and never attributes unassigned spending to anyone.
+- **Favourites UI** with a tab per person; each tab shows that person's plus the
+  shared ones.
+- `templates.ts` and `useTemplates.ts` removed — superseded.
+
+### Bug found by looking at the screenshot
+A favourite with no fixed amount rendered as **£0.00**. `toFiniteNumber` used
+`Number(value)`, and `Number(null)` is `0`, not `NaN` — so an explicit
+`amount: null` read as zero. The same coercion would have zeroed a real entry
+out of every total in the app had a payload ever carried `amount: null`. Fixed
+at the source with regression tests for both cases.
+
+### Process failure worth recording
+`verify-import` had been failing **since slice 4** restructured `App.tsx`, and
+went unnoticed because only the newest suite was run each time. CI covers unit
+tests and typecheck but not the browser checks, which need a dev server and real
+browsers.
+
+Added `npm run verify:all`, which runs all four suites and reports as one. Run
+it before shipping any UI change.
+
+### Files changed
+New: `src/domain/{favourites,favourites.test}.ts`, `src/hooks/useSettings.ts`,
+`src/components/Favourites.tsx`, `scripts/{verify-favourites,verify-all}.mjs`.
+Modified: `src/domain/types.ts`, `src/sync/{merge,merge.test,ledgerFile,
+ledgerFile.test,driveClient,syncEngine.test}.ts`, `src/hooks/useLedger.ts`,
+`src/storage/ledgerStore.ts`, `src/components/Capture.tsx`, `src/App.tsx`,
+`scripts/verify-import.mjs`, `package.json`.
+Removed: `src/domain/templates.ts`, `src/hooks/useTemplates.ts`.
+
+### Checks run
+- `npm test` — **169 passed** (was 143)
+- `npm run verify:all` — **59 browser checks across 4 suites, all passing**
+- `npm run audit:layout` — clean on iPhone 15
+- typecheck and build clean
+
+### Known issues / blockers
+- Favourites sync is unproven against two real devices. The merge is tested, but
+  nothing has watched a favourite created on one phone appear on the other.
+- The `HOUSEHOLD` list is still a hardcoded constant. Fine for two people;
+  adding or renaming someone means a code change.
+- Recurring detection still unvalidated against real data.
+- Still no UI to re-rate an approximate-FX entry; `icon-512.png` still 309 KB.
+
+### Next recommended task
+**Visual modernisation** — requested explicitly: keep the base colours and Space
+Grotesk, everything else open. Worth treating as its own pass with a look at
+the current screens first.
+
+---
+
 ## 2026-09-13 — Slice 4: insights
 
 ### Goal

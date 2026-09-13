@@ -13,6 +13,8 @@
     "verify:browser": "node scripts/verify-import.mjs",
     "verify:capture": "node scripts/verify-capture.mjs",
     "verify:insights": "node scripts/verify-insights.mjs",
+    "verify:favourites": "node scripts/verify-favourites.mjs",
+    "verify:all": "node scripts/verify-all.mjs",
     "audit:layout": "node scripts/audit-layout.mjs",
     "screenshot": "node scripts/screenshot.mjs"
   },

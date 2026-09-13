@@ -52,6 +52,13 @@ await page.waitForTimeout(1200);
 
 const afterImport = await page.locator('body').innerText();
 
+const whereItGoes = await page.evaluate(() => {
+  const section = [...document.querySelectorAll('section')].find((el) =>
+    /^where it goes/i.test(el.innerText.trim())
+  );
+  return section?.innerText ?? '';
+});
+
 // The real test of IndexedDB persistence: reload and see if it survived.
 await page.reload({ waitUntil: 'networkidle' });
 await page.waitForTimeout(1200);
@@ -74,8 +81,11 @@ const results = [
   check('carried the deletion over', /1 deletions carried over/i.test(afterImport)),
   check('entry count rendered', /6 entries/i.test(afterImport)),
   check('income total rendered', /£2,400\.00/.test(afterImport)),
-  check('spend excludes income', /£165\.59/.test(afterImport)),
   check('group rollup rendered', /Living & Home/i.test(afterImport) && /Mobility & Transport/i.test(afterImport)),
+  // Income must not be counted as spending. Scoped to the breakdown section,
+  // since the salary legitimately appears elsewhere on the page.
+  check('income kept out of the spending breakdown', !/£2,400\.00/.test(whereItGoes)),
+  check('spending groups add up in the breakdown', /£45\.20/.test(whereItGoes)),
   check('survived a reload (IndexedDB)', /6 entries/i.test(afterReload)),
   check('totals survived a reload', /£2,400\.00/.test(afterReload)),
   check('no console or page errors', problems.length === 0)

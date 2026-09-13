@@ -158,6 +158,106 @@ describe('our own file format', () => {
     expect(reread.syncedAt).toBe('2026-02-01T00:00:00.000Z');
   });
 
+  it('carries both people\'s favourites through a round trip', () => {
+    const favourites = [
+      {
+        id: 'f1',
+        label: 'Tesco',
+        person: 'Miguel',
+        category: 'living_home_supermarket',
+        currency: 'GBP',
+        amount: null,
+        note: 'Tesco',
+        useCount: 4,
+        lastUsedAt: '2026-09-10T10:00:00.000Z',
+        createdAt: '2026-08-01T10:00:00.000Z',
+        updatedAt: '2026-09-10T10:00:00.000Z'
+      },
+      {
+        id: 'f2',
+        label: 'Pingo Doce',
+        person: 'Ines',
+        category: 'living_home_supermarket',
+        currency: 'EUR',
+        amount: 40,
+        note: 'Pingo Doce',
+        useCount: 2,
+        lastUsedAt: null,
+        createdAt: '2026-08-02T10:00:00.000Z',
+        updatedAt: '2026-08-02T10:00:00.000Z'
+      }
+    ];
+
+    const written = { app: 'moneymap', schema: 4, entries: [], tombstones: [], favourites, favouriteTombstones: [], syncedAt: '2026-09-12T00:00:00.000Z' };
+    const result = parseLedgerFile(written);
+
+    expect(result.report.favourites).toBe(2);
+    expect(result.state.favourites.map((f) => f.person).sort()).toEqual(['Ines', 'Miguel']);
+    expect(result.state.favourites.find((f) => f.id === 'f2')?.currency).toBe('EUR');
+    expect(result.state.favourites.find((f) => f.id === 'f2')?.amount).toBe(40);
+
+    const again = parseLedgerFile(JSON.parse(JSON.stringify(serialiseLedgerFile(result.state, 'x'))));
+    expect(again.state.favourites).toEqual(result.state.favourites);
+  });
+
+  it('reads a schema-3 file as simply having no favourites', () => {
+    // Backwards compatibility: favourites arrived in schema 4, and an older
+    // backup having none is the correct outcome rather than an error.
+    const result = parseLedgerFile({ app: 'moneymap', schema: 3, entries: [], tombstones: [] });
+    expect(result.report.detected).toBe('v3');
+    expect(result.state.favourites).toEqual([]);
+    expect(result.report.warnings).toHaveLength(0);
+  });
+
+  it('migrates a favourite stored under the older "user" field', () => {
+    const result = parseLedgerFile({
+      entries: [],
+      favourites: [{ id: 'f1', label: 'Tesco', user: 'Miguel', category: 'living_home_supermarket' }]
+    });
+    expect(result.state.favourites[0]!.person).toBe('Miguel');
+    // Backfilled, so it has a valid merge clock instead of losing every
+    // conflict forever by sitting at the epoch.
+    expect(result.state.favourites[0]!.createdAt).not.toBe('');
+    expect(result.state.favourites[0]!.updatedAt).toBe(result.state.favourites[0]!.createdAt);
+  });
+
+  it('keeps a null favourite amount null, rather than reading it as zero', () => {
+    // Regression: `Number(null)` is 0, not NaN. A favourite with no fixed
+    // amount was coming back as £0.00 and rendering as if it cost nothing.
+    const result = parseLedgerFile({
+      entries: [],
+      favourites: [
+        { id: 'f1', label: 'Tesco', category: 'living_home_supermarket', amount: null },
+        { id: 'f2', label: 'Rent', category: 'living_home_rent', amount: 1250 }
+      ]
+    });
+    expect(result.state.favourites.find((f) => f.id === 'f1')?.amount).toBeNull();
+    expect(result.state.favourites.find((f) => f.id === 'f2')?.amount).toBe(1250);
+  });
+
+  it('refuses an entry whose amount is explicitly null', () => {
+    // The same coercion bug would have zeroed a real entry out of every total.
+    const result = parseLedgerFile({
+      expenses: [{ id: 'x', amount: null, date: '2026-01-15', category: 'other' }]
+    });
+    expect(result.report.imported).toBe(0);
+    expect(result.report.skipped).toBe(1);
+  });
+
+  it('drops unusable favourites without failing the whole read', () => {
+    const result = parseLedgerFile({
+      entries: [],
+      favourites: [
+        { id: 'ok', label: 'Fine', category: 'living_home_rent' },
+        { id: 'no-category', label: 'Broken' },
+        { label: 'No id', category: 'living_home_rent' },
+        null,
+        'nonsense'
+      ]
+    });
+    expect(result.state.favourites.map((f) => f.id)).toEqual(['ok']);
+  });
+
   it('preserves a foreign-currency entry and its frozen rate', () => {
     const written = {
       app: 'moneymap',

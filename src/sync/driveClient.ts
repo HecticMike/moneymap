@@ -1,4 +1,4 @@
-import type { LedgerState } from '../domain/types';
+import { emptyLedger, type LedgerState } from '../domain/types';
 import { LEDGER_FILE, LEDGER_FILE_V1, parseLedgerFile, serialiseLedgerFile } from './ledgerFile';
 import type { RemoteSnapshot, RemoteStore } from './syncEngine';
 
@@ -143,7 +143,7 @@ export const createDriveRemote = (options: DriveRemoteOptions): RemoteStore => {
       const id = await resolveFileId(accessToken);
 
       if (id == null) {
-        return { state: { entries: [], tombstones: [] }, syncedAt: null, exists: false };
+        return { state: emptyLedger(), syncedAt: null, exists: false };
       }
 
       try {
@@ -156,7 +156,7 @@ export const createDriveRemote = (options: DriveRemoteOptions): RemoteStore => {
         if (error instanceof DriveError && error.status === 404) {
           fileId = null;
           options.onFileId?.(null);
-          return { state: { entries: [], tombstones: [] }, syncedAt: null, exists: false };
+          return { state: emptyLedger(), syncedAt: null, exists: false };
         }
         throw error;
       }

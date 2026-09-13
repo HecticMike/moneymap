@@ -1,6 +1,5 @@
-import { compareByDateDesc } from '../sync/merge';
-import { parseLedgerFile } from '../sync/ledgerFile';
-import type { LedgerState } from '../domain/types';
+import { parseLedgerFile, serialiseLedgerFile } from '../sync/ledgerFile';
+import { emptyLedger, type LedgerState } from '../domain/types';
 import { KEYS, dbGet, dbSet } from './db';
 
 /**
@@ -12,15 +11,14 @@ import { KEYS, dbGet, dbSet } from './db';
  */
 export const loadLedger = async (): Promise<LedgerState> => {
   const stored = await dbGet<unknown>(KEYS.ledger);
-  if (stored == null) return { entries: [], tombstones: [] };
+  if (stored == null) return emptyLedger();
   return parseLedgerFile(stored).state;
 };
 
+/**
+ * Written in exactly the format Drive receives, so the local copy and the
+ * remote one cannot drift apart in shape — a mismatch there would show up as a
+ * sync that never converges.
+ */
 export const saveLedger = async (state: LedgerState): Promise<boolean> =>
-  dbSet(KEYS.ledger, {
-    app: 'moneymap',
-    schema: 3,
-    entries: [...state.entries].sort(compareByDateDesc),
-    tombstones: state.tombstones,
-    syncedAt: new Date().toISOString()
-  });
+  dbSet(KEYS.ledger, serialiseLedgerFile(state, new Date().toISOString()));

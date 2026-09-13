@@ -62,10 +62,47 @@ export interface Tombstone {
   deletedAt: string;
 }
 
+/**
+ * Anything that syncs. `createdAt`/`updatedAt` are the merge clock; `id` is
+ * what a tombstone refers to.
+ */
+export interface Syncable {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * A saved favourite — an entry the household repeats.
+ *
+ * `person` does double duty on purpose: it is whose favourites list this
+ * appears in *and* who an entry created from it is attributed to. That is what
+ * lets one phone log the other person's spending using their own shortcuts.
+ * `null` means a shared household favourite, like rent.
+ */
+export interface Favourite extends Syncable {
+  label: string;
+  person: string | null;
+  category: string;
+  currency: CurrencyCode;
+  /** null means "ask every time", which is the normal case. */
+  amount: number | null;
+  note: string;
+  useCount: number;
+  lastUsedAt: string | null;
+}
+
 /** The complete syncable state. This is what gets merged and what Drive holds. */
 export interface LedgerState {
   entries: Entry[];
   tombstones: Tombstone[];
+  favourites: Favourite[];
+  favouriteTombstones: Tombstone[];
 }
 
-export const emptyLedger = (): LedgerState => ({ entries: [], tombstones: [] });
+export const emptyLedger = (): LedgerState => ({
+  entries: [],
+  tombstones: [],
+  favourites: [],
+  favouriteTombstones: []
+});

@@ -1,7 +1,15 @@
-import { isCategoryId, type CategoryId } from '../domain/categories';
+import { CATEGORY_META, isCategoryId, type CategoryId } from '../domain/categories';
 import { isCurrencyCode, roundMoney, toBaseAmount } from '../domain/money';
-import { BASE_CURRENCY, type Entry, type EntrySource, type LedgerState, type Tombstone } from '../domain/types';
-import { compareByDateDesc, compareTombstonesByDeletedDesc } from './merge';
+import {
+  BASE_CURRENCY,
+  emptyLedger,
+  type Entry,
+  type EntrySource,
+  type Favourite,
+  type LedgerState,
+  type Tombstone
+} from '../domain/types';
+import { compareByDateDesc, compareFavourites, compareTombstonesByDeletedDesc } from './merge';
 
 /**
  * Reading and writing the Drive backup file.
@@ -17,13 +25,23 @@ import { compareByDateDesc, compareTombstonesByDeletedDesc } from './merge';
 
 export const LEDGER_FILE_V1 = 'money-map-data.json';
 export const LEDGER_FILE = 'money-map-data-v3.json';
-export const LEDGER_SCHEMA = 3;
+
+/**
+ * Schema 4 added favourites. The *file name* deliberately did not change: a
+ * second file would leave the two phones reading different backups until both
+ * happened to update, which is worse than a brief window where an older client
+ * round-trips and drops the favourites array. Entries are never at risk either
+ * way, and a lost favourite is re-addable in one tap.
+ */
+export const LEDGER_SCHEMA = 4;
 
 export interface LedgerFile {
   app: 'moneymap';
   schema: typeof LEDGER_SCHEMA;
   entries: Entry[];
   tombstones: Tombstone[];
+  favourites: Favourite[];
+  favouriteTombstones: Tombstone[];
   syncedAt: string;
 }
 
@@ -37,6 +55,7 @@ export interface ParseReport {
   /** Entries that arrived without createdAt/updatedAt and were backfilled. */
   timestampsBackfilled: number;
   tombstones: number;
+  favourites: number;
   warnings: string[];
 }
 
@@ -54,6 +73,7 @@ const emptyReport = (detected: ParseReport['detected']): ParseReport => ({
   categoriesCoerced: 0,
   timestampsBackfilled: 0,
   tombstones: 0,
+  favourites: 0,
   warnings: []
 });
 
@@ -68,6 +88,10 @@ const toIso = (value: unknown): string | null => {
 };
 
 const toFiniteNumber = (value: unknown): number | null => {
+  // `Number(null)` is 0, not NaN. Without this guard an explicit null — which
+  // for a favourite's amount means "ask every time" — silently reads as zero,
+  // and on an entry would zero it out of every total in the app.
+  if (value == null || value === '') return null;
   const parsed = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : null;
 };
@@ -156,6 +180,47 @@ const readEntry = (raw: unknown, report: ParseReport): Entry | null => {
   };
 };
 
+/**
+ * Coerce one untrusted record into a Favourite.
+ *
+ * Also migrates the shape slice 3 stored locally, which used `user` and had no
+ * merge timestamps — those get backfilled so the record has a valid clock the
+ * first time it syncs, rather than losing every conflict forever by sitting at
+ * the epoch.
+ */
+const readFavourite = (raw: unknown, now: string): Favourite | null => {
+  if (!isRecord(raw)) return null;
+  if (typeof raw.id !== 'string' || raw.id === '') return null;
+  if (!isCategoryId(raw.category)) return null;
+
+  const amount = toFiniteNumber(raw.amount);
+  const person =
+    typeof raw.person === 'string' && raw.person !== ''
+      ? raw.person
+      : typeof raw.user === 'string' && raw.user !== ''
+        ? raw.user
+        : null;
+
+  const createdAt = toIso(raw.createdAt) ?? now;
+
+  return {
+    id: raw.id,
+    label:
+      typeof raw.label === 'string' && raw.label.trim() !== ''
+        ? raw.label.trim()
+        : CATEGORY_META[raw.category].label,
+    person,
+    category: raw.category,
+    currency: isCurrencyCode(raw.currency) ? raw.currency : BASE_CURRENCY,
+    amount: amount == null ? null : roundMoney(amount),
+    note: typeof raw.note === 'string' ? raw.note : '',
+    useCount: typeof raw.useCount === 'number' && Number.isFinite(raw.useCount) ? raw.useCount : 0,
+    lastUsedAt: toIso(raw.lastUsedAt),
+    createdAt,
+    updatedAt: toIso(raw.updatedAt) ?? createdAt
+  };
+};
+
 const readTombstone = (raw: unknown): Tombstone | null => {
   if (!isRecord(raw)) return null;
   if (typeof raw.id !== 'string' || raw.id.length === 0) return null;
@@ -174,7 +239,7 @@ export const parseLedgerFile = (raw: unknown): ParseResult => {
   if (!isRecord(raw)) {
     const report = emptyReport('unknown');
     report.warnings.push('Backup file is not a JSON object.');
-    return { state: { entries: [], tombstones: [] }, syncedAt: null, report };
+    return { state: emptyLedger(), syncedAt: null, report };
   }
 
   const rawEntries = Array.isArray(raw.entries)
@@ -193,7 +258,7 @@ export const parseLedgerFile = (raw: unknown): ParseResult => {
 
   if (rawEntries == null) {
     report.warnings.push('Backup file has neither an "entries" nor an "expenses" array.');
-    return { state: { entries: [], tombstones: [] }, syncedAt: toIso(raw.syncedAt), report };
+    return { state: emptyLedger(), syncedAt: toIso(raw.syncedAt), report };
   }
 
   report.read = rawEntries.length;
@@ -227,10 +292,35 @@ export const parseLedgerFile = (raw: unknown): ParseResult => {
   }
   report.tombstones = tombstones.length;
 
+  // Favourites arrived in schema 4. A schema-3 file simply has none, which is
+  // the correct outcome rather than an error.
+  const now = new Date().toISOString();
+  const favourites: Favourite[] = [];
+  const seenFavourites = new Set<string>();
+  if (Array.isArray(raw.favourites)) {
+    for (const candidate of raw.favourites) {
+      const favourite = readFavourite(candidate, now);
+      if (favourite == null || seenFavourites.has(favourite.id)) continue;
+      seenFavourites.add(favourite.id);
+      favourites.push(favourite);
+    }
+  }
+  report.favourites = favourites.length;
+
+  const favouriteTombstones: Tombstone[] = [];
+  if (Array.isArray(raw.favouriteTombstones)) {
+    for (const candidate of raw.favouriteTombstones) {
+      const tombstone = readTombstone(candidate);
+      if (tombstone != null) favouriteTombstones.push(tombstone);
+    }
+  }
+
   return {
     state: {
       entries: entries.sort(compareByDateDesc),
-      tombstones: tombstones.sort(compareTombstonesByDeletedDesc)
+      tombstones: tombstones.sort(compareTombstonesByDeletedDesc),
+      favourites: favourites.sort(compareFavourites),
+      favouriteTombstones: favouriteTombstones.sort(compareTombstonesByDeletedDesc)
     },
     syncedAt: toIso(raw.syncedAt),
     report
@@ -242,5 +332,7 @@ export const serialiseLedgerFile = (state: LedgerState, syncedAt: string): Ledge
   schema: LEDGER_SCHEMA,
   entries: state.entries,
   tombstones: state.tombstones,
+  favourites: state.favourites,
+  favouriteTombstones: state.favouriteTombstones,
   syncedAt
 });

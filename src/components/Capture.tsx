@@ -10,24 +10,20 @@ import { CURRENCY_META, formatMoney } from '../domain/money';
 import { parseEntryText } from '../domain/parseEntry';
 import { HOUSEHOLD } from '../domain/people';
 import { learnNoteAssociations, suggestCategoryChips } from '../domain/suggestions';
-import type { Template } from '../domain/templates';
-import type { CurrencyCode, Entry } from '../domain/types';
+import type { FavouriteDraft } from '../domain/favourites';
+import type { CurrencyCode, Entry, Favourite } from '../domain/types';
 import type { AddResult, EntryDraft } from '../hooks/useLedger';
+import { Favourites } from './Favourites';
 
 interface CaptureProps {
   entries: Entry[];
-  templates: Template[];
+  favourites: Favourite[];
+  /** Who this phone belongs to; defaults the person on new entries. */
+  owner: string | null;
   onAdd: (draft: EntryDraft) => Promise<AddResult>;
-  onUseTemplate: (id: string) => void;
-  onSaveTemplate: (draft: {
-    label: string;
-    category: CategoryId;
-    currency: CurrencyCode;
-    amount: number | null;
-    user: string | null;
-    note: string;
-  }) => void;
-  onRemoveTemplate: (id: string) => void;
+  onUseFavourite: (id: string) => void;
+  onAddFavourite: (draft: FavouriteDraft) => void;
+  onRemoveFavourite: (id: string) => void;
 }
 
 const dayOffset = (days: number): string => {
@@ -48,11 +44,12 @@ const chip = (active: boolean): string =>
 
 export const Capture: React.FC<CaptureProps> = ({
   entries,
-  templates,
+  favourites,
+  owner,
   onAdd,
-  onUseTemplate,
-  onSaveTemplate,
-  onRemoveTemplate
+  onUseFavourite,
+  onAddFavourite,
+  onRemoveFavourite
 }) => {
   const [text, setText] = useState('');
   const [currency, setCurrency] = useState<CurrencyCode>('GBP');
@@ -64,7 +61,8 @@ export const Capture: React.FC<CaptureProps> = ({
   const [categoryOverride, setCategoryOverride] = useState<CategoryId | null>(null);
   const [dateOverride, setDateOverride] = useState<string | null>(null);
   const [noteOverride, setNoteOverride] = useState<string | null>(null);
-  const [person, setPerson] = useState<string>('');
+  // Defaults to whoever's phone this is — one fewer tap on the common case.
+  const [person, setPerson] = useState<string>(owner ?? '');
 
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -99,13 +97,15 @@ export const Capture: React.FC<CaptureProps> = ({
     setNoteOverride(null);
   };
 
-  const applyTemplate = (template: Template) => {
-    onUseTemplate(template.id);
-    setCurrency(template.currency);
-    setCategoryOverride(template.category);
-    setNoteOverride(template.note);
-    if (template.user != null) setPerson(template.user);
-    if (template.amount != null) setText(String(template.amount));
+  const applyFavourite = (favourite: Favourite) => {
+    onUseFavourite(favourite.id);
+    setCurrency(favourite.currency);
+    setCategoryOverride(favourite.category as CategoryId);
+    setNoteOverride(favourite.note);
+    // A shared favourite leaves the person alone; a personal one attributes the
+    // entry to its owner, which is what makes logging for the other person work.
+    if (favourite.person != null) setPerson(favourite.person);
+    if (favourite.amount != null) setText(String(favourite.amount));
     setFeedback(null);
     setProblem(null);
   };
@@ -142,18 +142,6 @@ export const Capture: React.FC<CaptureProps> = ({
       );
     }
     setBusy(false);
-  };
-
-  const saveAsTemplate = () => {
-    onSaveTemplate({
-      label: note.trim() !== '' ? note.trim() : CATEGORY_META[category].label,
-      category,
-      currency,
-      amount: null,
-      user: person === '' ? null : person,
-      note
-    });
-    setFeedback('Saved as a template.');
   };
 
   const options = kind === 'income' ? INCOME_CATEGORY_IDS : EXPENSE_CATEGORY_IDS;
@@ -247,37 +235,17 @@ export const Capture: React.FC<CaptureProps> = ({
         </p>
       ) : null}
 
-      {templates.length > 0 ? (
-        <div className="mt-4">
-          <span className={label}>Templates</span>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {templates.slice(0, 8).map((template) => (
-              <span key={template.id} className="flex">
-                <button
-                  type="button"
-                  onClick={() => applyTemplate(template)}
-                  className="tap-target border border-brand-line px-3 text-[11px] font-semibold text-brand-highlight transition hover:border-brand-highlight hover:text-brand-amber"
-                >
-                  <span
-                    className="mr-2 inline-block h-2 w-2 align-middle"
-                    style={{ backgroundColor: CATEGORY_META[template.category].color }}
-                    aria-hidden
-                  />
-                  {template.label}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onRemoveTemplate(template.id)}
-                  aria-label={`Remove template ${template.label}`}
-                  className="tap-target border border-l-0 border-brand-line px-2 text-[11px] text-brand-neutral transition hover:text-brand-accent"
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-          </div>
-        </div>
-      ) : null}
+      <div className="mt-4">
+        <Favourites
+          favourites={favourites}
+          entries={entries}
+          owner={owner}
+          onApply={applyFavourite}
+          onAdd={onAddFavourite}
+          onRemove={onRemoveFavourite}
+          current={{ category, currency, note, person: person === '' ? null : person }}
+        />
+      </div>
 
       <div className="mt-4">
         <div className="flex items-center justify-between">
@@ -406,13 +374,6 @@ export const Capture: React.FC<CaptureProps> = ({
             />
           </div>
 
-          <button
-            type="button"
-            onClick={saveAsTemplate}
-            className="tap-target border border-brand-line px-3 text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-highlight transition hover:text-brand-amber"
-          >
-            Save as template
-          </button>
         </div>
       ) : null}
 

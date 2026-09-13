@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { compareByDateDesc, entryClock, ledgersEqual, mergeLedgers } from './merge';
-import type { Entry, LedgerState, Tombstone } from '../domain/types';
+import type { Entry, Favourite, LedgerState, Tombstone } from '../domain/types';
 
 const entry = (over: Partial<Entry> & { id: string }): Entry => ({
   amount: 10,
@@ -20,8 +20,29 @@ const entry = (over: Partial<Entry> & { id: string }): Entry => ({
 
 const ledger = (entries: Entry[], tombstones: Tombstone[] = []): LedgerState => ({
   entries,
-  tombstones
+  tombstones,
+  favourites: [],
+  favouriteTombstones: []
 });
+
+const favourite = (over: Partial<Favourite> & { id: string }): Favourite => ({
+  label: 'Tesco',
+  person: 'Miguel',
+  category: 'living_home_supermarket',
+  currency: 'GBP',
+  amount: null,
+  note: 'Tesco',
+  useCount: 0,
+  lastUsedAt: null,
+  createdAt: '2026-01-15T10:00:00.000Z',
+  updatedAt: '2026-01-15T10:00:00.000Z',
+  ...over
+});
+
+const withFavourites = (
+  favourites: Favourite[],
+  favouriteTombstones: Tombstone[] = []
+): LedgerState => ({ entries: [], tombstones: [], favourites, favouriteTombstones });
 
 describe('algebraic properties', () => {
   // These two are the properties that matter. A merge lacking them corrupts
@@ -174,6 +195,84 @@ describe('display ordering', () => {
     expect([a, b].sort(compareByDateDesc).map((i) => i.id)).toEqual(
       [b, a].sort(compareByDateDesc).map((i) => i.id)
     );
+  });
+});
+
+describe('favourites', () => {
+  // Favourites sync so each person's shortcuts reach the other person's phone.
+  // They get the same merge guarantees as entries because they go through the
+  // same generic collection merge, not a second hand-written implementation.
+
+  it('brings both people\'s favourites together', () => {
+    const miguelsPhone = withFavourites([favourite({ id: 'm1', person: 'Miguel', label: 'Tesco' })]);
+    const inesPhone = withFavourites([favourite({ id: 'i1', person: 'Ines', label: 'Pingo Doce' })]);
+
+    const merged = mergeLedgers(miguelsPhone, inesPhone);
+    expect(merged.favourites.map((f) => f.label).sort()).toEqual(['Pingo Doce', 'Tesco']);
+    expect(merged.favourites.map((f) => f.person).sort()).toEqual(['Ines', 'Miguel']);
+  });
+
+  it('keeps the more recently edited version', () => {
+    const older = withFavourites([
+      favourite({ id: 'f1', label: 'Old name', updatedAt: '2026-02-01T10:00:00.000Z' })
+    ]);
+    const newer = withFavourites([
+      favourite({ id: 'f1', label: 'New name', updatedAt: '2026-02-05T10:00:00.000Z' })
+    ]);
+
+    expect(mergeLedgers(older, newer).favourites[0]!.label).toBe('New name');
+    expect(mergeLedgers(newer, older).favourites[0]!.label).toBe('New name');
+  });
+
+  it('does not resurrect a favourite deleted on the other phone', () => {
+    const stale = withFavourites([favourite({ id: 'f1', updatedAt: '2026-02-01T10:00:00.000Z' })]);
+    const deleted = withFavourites([], [{ id: 'f1', deletedAt: '2026-02-02T10:00:00.000Z' }]);
+
+    const merged = mergeLedgers(stale, deleted);
+    expect(merged.favourites).toHaveLength(0);
+    expect(merged.favouriteTombstones.map((t) => t.id)).toEqual(['f1']);
+  });
+
+  it('keeps favourite deletions separate from entry deletions', () => {
+    // Same id in both collections must not have one delete the other.
+    const left: LedgerState = {
+      entries: [entry({ id: 'shared-id' })],
+      tombstones: [],
+      favourites: [favourite({ id: 'shared-id' })],
+      favouriteTombstones: [{ id: 'shared-id', deletedAt: '2030-01-01T00:00:00.000Z' }]
+    };
+
+    const merged = mergeLedgers(left, ledger([]));
+    expect(merged.entries.map((e) => e.id)).toEqual(['shared-id']);
+    expect(merged.favourites).toHaveLength(0);
+  });
+
+  it('stays commutative and idempotent with favourites present', () => {
+    const a: LedgerState = {
+      entries: [entry({ id: 'a' })],
+      tombstones: [],
+      favourites: [favourite({ id: 'f1', person: 'Miguel' })],
+      favouriteTombstones: [{ id: 'gone', deletedAt: '2026-01-01T00:00:00.000Z' }]
+    };
+    const b: LedgerState = {
+      entries: [entry({ id: 'b' })],
+      tombstones: [],
+      favourites: [favourite({ id: 'f2', person: 'Ines' })],
+      favouriteTombstones: []
+    };
+
+    expect(ledgersEqual(mergeLedgers(a, b), mergeLedgers(b, a))).toBe(true);
+    expect(ledgersEqual(mergeLedgers(a, a), a)).toBe(true);
+  });
+
+  it('counts a favourite edit as a change, so it actually syncs', () => {
+    // If the signature ignored useCount, tapping a favourite would never mark
+    // the ledger dirty and the other phone would never learn about it.
+    const before = withFavourites([favourite({ id: 'f1', useCount: 0 })]);
+    const after = withFavourites([
+      favourite({ id: 'f1', useCount: 1, updatedAt: '2026-03-01T00:00:00.000Z' })
+    ]);
+    expect(ledgersEqual(before, after)).toBe(false);
   });
 });
 

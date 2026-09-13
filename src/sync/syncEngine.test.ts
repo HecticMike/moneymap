@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { backoffDelayMs, shouldSync, syncOnce, type RemoteStore } from './syncEngine';
-import type { Entry, LedgerState } from '../domain/types';
+import { emptyLedger, type Entry, type LedgerState } from '../domain/types';
 
 const entry = (id: string, over: Partial<Entry> = {}): Entry => ({
   id,
@@ -21,14 +21,16 @@ const entry = (id: string, over: Partial<Entry> = {}): Entry => ({
 
 const ledger = (ids: string[]): LedgerState => ({
   entries: ids.map((id) => entry(id)),
-  tombstones: []
+  tombstones: [],
+  favourites: [],
+  favouriteTombstones: []
 });
 
 const idsOf = (state: LedgerState): string[] => state.entries.map((item) => item.id).sort();
 
 /** Stand-in for Drive, able to simulate the other phone writing mid-sync. */
 class FakeDrive implements RemoteStore {
-  state: LedgerState = { entries: [], tombstones: [] };
+  state: LedgerState = emptyLedger();
   exists = false;
   syncedAt: string | null = null;
   reads = 0;
@@ -40,7 +42,12 @@ class FakeDrive implements RemoteStore {
     this.reads += 1;
     this.interfereBeforeRead.get(this.reads)?.(this);
     return {
-      state: { entries: [...this.state.entries], tombstones: [...this.state.tombstones] },
+      state: {
+        entries: [...this.state.entries],
+        tombstones: [...this.state.tombstones],
+        favourites: [...this.state.favourites],
+        favouriteTombstones: [...this.state.favouriteTombstones]
+      },
       syncedAt: this.syncedAt,
       exists: this.exists
     };
@@ -75,7 +82,7 @@ describe('syncOnce', () => {
     drive.state = ledger(['remote-1', 'remote-2']);
     drive.exists = true;
 
-    const result = await syncOnce({ entries: [], tombstones: [] }, drive, { now: clock() });
+    const result = await syncOnce(emptyLedger(), drive, { now: clock() });
 
     expect(result.action).toBe('pulled');
     expect(idsOf(result.state)).toEqual(['remote-1', 'remote-2']);
@@ -171,6 +178,7 @@ describe('syncOnce', () => {
     drive.exists = true;
 
     const localAfterDelete: LedgerState = {
+      ...emptyLedger(),
       entries: [entry('a')],
       tombstones: [{ id: 'b', deletedAt: '2026-02-01T00:00:00.000Z' }]
     };

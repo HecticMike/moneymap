@@ -1,18 +1,22 @@
-import type { Entry, LedgerState, Tombstone } from '../domain/types';
+import type { Entry, Favourite, LedgerState, Syncable, Tombstone } from '../domain/types';
 
 /**
  * Conflict resolution for two phones editing the same ledger offline.
  *
  * Ported from money-map v1's `expenseSync.ts`, which was the strongest code in
- * that codebase: last-write-wins per entry, with tombstones so a deletion on
+ * that codebase: last-write-wins per record, with tombstones so a deletion on
  * one device is not resurrected by a sync from the other. The shape of the
  * algorithm is unchanged. Two things were fixed — see `entryClock` and
- * `pickLatestEntry`.
+ * `pickLatest`.
+ *
+ * The per-record logic is generic so favourites get exactly the same
+ * guarantees as entries. Favourites sync because each person's shortcuts have
+ * to be available on the other person's phone.
  *
  * Known limitation, unchanged from v1 and not solvable without a server:
  * last-write-wins compares wall clocks, so a device whose clock runs fast wins
  * conflicts it should lose. In practice both phones take time from the network
- * and edits to the same entry seconds apart are vanishingly rare in a
+ * and edits to the same record seconds apart are vanishingly rare in a
  * two-person household.
  */
 
@@ -23,20 +27,22 @@ const timestamp = (value?: string | null): number => {
 };
 
 /**
- * The merge clock for an entry.
+ * The merge clock for a record.
  *
- * v1 computed this as `max(updatedAt, createdAt, date)`. Including `date` was a
- * real bug: `date` is the *transaction* date, chosen freely by the person, and
- * can be in the future. An entry dated next month carried a next-month clock,
- * so it beat any subsequent deletion and could not be deleted — it came back on
- * the next sync, every time.
+ * v1 computed this for entries as `max(updatedAt, createdAt, date)`. Including
+ * `date` was a real bug: `date` is the *transaction* date, chosen freely by the
+ * person, and can be in the future. An entry dated next month carried a
+ * next-month clock, so it beat any subsequent deletion and could not be
+ * deleted — it came back on the next sync, every time.
  *
- * Only system-assigned times are a valid clock. Entries missing them are
+ * Only system-assigned times are a valid clock. Records missing them are
  * backfilled once during import (see `legacy.ts`) rather than being papered
  * over here on every merge.
  */
-export const entryClock = (entry: Entry): number =>
-  Math.max(timestamp(entry.updatedAt), timestamp(entry.createdAt));
+export const recordClock = (record: Syncable): number =>
+  Math.max(timestamp(record.updatedAt), timestamp(record.createdAt));
+
+export const entryClock = (entry: Entry): number => recordClock(entry);
 
 export const tombstoneClock = (tombstone: Tombstone): number => timestamp(tombstone.deletedAt);
 
@@ -54,7 +60,7 @@ export const compareByDateDesc = (a: Entry, b: Entry): number => {
 export const compareTombstonesByDeletedDesc = (a: Tombstone, b: Tombstone): number =>
   tombstoneClock(b) - tombstoneClock(a);
 
-/** Stable per-entry signature, used for tiebreaks and for state equality. */
+/** Stable per-record signature, used for tiebreaks and for state equality. */
 const entrySignature = (entry: Entry): string =>
   JSON.stringify([
     entry.id,
@@ -72,6 +78,21 @@ const entrySignature = (entry: Entry): string =>
     entry.source
   ]);
 
+const favouriteSignature = (favourite: Favourite): string =>
+  JSON.stringify([
+    favourite.id,
+    favourite.label,
+    favourite.person,
+    favourite.category,
+    favourite.currency,
+    favourite.amount,
+    favourite.note,
+    favourite.useCount,
+    favourite.lastUsedAt,
+    favourite.createdAt,
+    favourite.updatedAt
+  ]);
+
 /**
  * v1 resolved equal timestamps with `>=`, meaning "whichever happened to be
  * visited second wins". That makes the merge non-commutative: two phones
@@ -81,14 +102,18 @@ const entrySignature = (entry: Entry): string =>
  * Ties now break on content signature, which is arbitrary but identical on both
  * devices — so both converge on the same answer and the fight ends.
  */
-const pickLatestEntry = (current: Entry | undefined, candidate: Entry): Entry => {
+const pickLatest = <T extends Syncable>(
+  current: T | undefined,
+  candidate: T,
+  signature: (record: T) => string
+): T => {
   if (current == null) return candidate;
 
-  const currentClock = entryClock(current);
-  const candidateClock = entryClock(candidate);
+  const currentClock = recordClock(current);
+  const candidateClock = recordClock(candidate);
   if (candidateClock !== currentClock) return candidateClock > currentClock ? candidate : current;
 
-  return entrySignature(candidate) > entrySignature(current) ? candidate : current;
+  return signature(candidate) > signature(current) ? candidate : current;
 };
 
 const pickLatestTombstone = (
@@ -100,6 +125,62 @@ const pickLatestTombstone = (
 };
 
 /**
+ * Merge one collection and its tombstones. Used for entries and favourites
+ * alike, so both get the same convergence guarantees rather than favourites
+ * getting a hastily written second implementation.
+ */
+export const mergeCollection = <T extends Syncable>(
+  localRecords: T[],
+  remoteRecords: T[],
+  localTombstones: Tombstone[],
+  remoteTombstones: Tombstone[],
+  signature: (record: T) => string
+): { records: T[]; tombstones: Tombstone[] } => {
+  const byId = new Map<string, T>();
+  const tombstoneById = new Map<string, Tombstone>();
+
+  for (const record of [...localRecords, ...remoteRecords]) {
+    byId.set(record.id, pickLatest(byId.get(record.id), record, signature));
+  }
+
+  for (const tombstone of [...localTombstones, ...remoteTombstones]) {
+    tombstoneById.set(tombstone.id, pickLatestTombstone(tombstoneById.get(tombstone.id), tombstone));
+  }
+
+  const records: T[] = [];
+  const tombstones: Tombstone[] = [];
+
+  for (const id of new Set([...byId.keys(), ...tombstoneById.keys()])) {
+    const record = byId.get(id);
+    const tombstone = tombstoneById.get(id);
+
+    if (record == null) {
+      if (tombstone != null) tombstones.push(tombstone);
+      continue;
+    }
+
+    // Strictly greater: a deletion in the same millisecond as an edit wins,
+    // because the delete is the later intent.
+    if (tombstone == null || recordClock(record) > tombstoneClock(tombstone)) {
+      records.push(record);
+    } else {
+      tombstones.push(tombstone);
+    }
+  }
+
+  return { records, tombstones: tombstones.sort(compareTombstonesByDeletedDesc) };
+};
+
+/** Favourites sort most-used first, then most recently used. */
+export const compareFavourites = (a: Favourite, b: Favourite): number => {
+  if (b.useCount !== a.useCount) return b.useCount - a.useCount;
+  const left = a.lastUsedAt ?? '';
+  const right = b.lastUsedAt ?? '';
+  if (left !== right) return right.localeCompare(left);
+  return a.label.localeCompare(b.label) || a.id.localeCompare(b.id);
+};
+
+/**
  * Merge two ledgers into the state both devices should agree on.
  *
  * Commutative and idempotent: merge(a, b) === merge(b, a), and merging a state
@@ -107,41 +188,27 @@ const pickLatestTombstone = (
  * that lacks them corrupts data slowly and invisibly.
  */
 export const mergeLedgers = (local: LedgerState, remote: LedgerState): LedgerState => {
-  const entryById = new Map<string, Entry>();
-  const tombstoneById = new Map<string, Tombstone>();
+  const entries = mergeCollection(
+    local.entries,
+    remote.entries,
+    local.tombstones,
+    remote.tombstones,
+    entrySignature
+  );
 
-  for (const entry of [...local.entries, ...remote.entries]) {
-    entryById.set(entry.id, pickLatestEntry(entryById.get(entry.id), entry));
-  }
-
-  for (const tombstone of [...local.tombstones, ...remote.tombstones]) {
-    tombstoneById.set(tombstone.id, pickLatestTombstone(tombstoneById.get(tombstone.id), tombstone));
-  }
-
-  const entries: Entry[] = [];
-  const tombstones: Tombstone[] = [];
-
-  for (const id of new Set([...entryById.keys(), ...tombstoneById.keys()])) {
-    const entry = entryById.get(id);
-    const tombstone = tombstoneById.get(id);
-
-    if (entry == null) {
-      if (tombstone != null) tombstones.push(tombstone);
-      continue;
-    }
-
-    // Strictly greater: a deletion in the same millisecond as an edit wins,
-    // because the delete is the later intent.
-    if (tombstone == null || entryClock(entry) > tombstoneClock(tombstone)) {
-      entries.push(entry);
-    } else {
-      tombstones.push(tombstone);
-    }
-  }
+  const favourites = mergeCollection(
+    local.favourites,
+    remote.favourites,
+    local.favouriteTombstones,
+    remote.favouriteTombstones,
+    favouriteSignature
+  );
 
   return {
-    entries: entries.sort(compareByDateDesc),
-    tombstones: tombstones.sort(compareTombstonesByDeletedDesc)
+    entries: entries.records.sort(compareByDateDesc),
+    tombstones: entries.tombstones,
+    favourites: favourites.records.sort(compareFavourites),
+    favouriteTombstones: favourites.tombstones
   };
 };
 
@@ -150,6 +217,12 @@ export const ledgerSignature = (state: LedgerState): string =>
   JSON.stringify({
     entries: [...state.entries].sort((a, b) => a.id.localeCompare(b.id)).map(entrySignature),
     tombstones: [...state.tombstones]
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((tombstone) => [tombstone.id, tombstone.deletedAt]),
+    favourites: [...state.favourites]
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map(favouriteSignature),
+    favouriteTombstones: [...state.favouriteTombstones]
       .sort((a, b) => a.id.localeCompare(b.id))
       .map((tombstone) => [tombstone.id, tombstone.deletedAt])
   });
