@@ -4,6 +4,83 @@ Newest entry first. Factual and concise; partial work is stated as partial.
 
 ---
 
+## 2026-09-13 — Slice 4: insights
+
+### Goal
+Answer the two questions the app exists for: *is this month unusual?* and
+*what repeats versus what was a one-off?*
+
+### Completed
+- **Like-for-like month comparison** (`src/domain/insights.ts`). The trap this
+  file exists to avoid: comparing 13 days of September against whole months of
+  July and August and reporting a collapse in spending. Every comparison takes
+  the *same slice* of each prior month, clamping to short months so a 31st never
+  spills past February. The window used is returned and shown ("Same days of
+  Mar, Apr, May…").
+- **Movement thresholds that keep the feature believable.** A change is only
+  flagged when it clears 20% *and* £15 *and* there are at least two prior
+  months. Without the absolute floor, "Supplements up 300%" fires on a £2 move
+  and nothing else on the screen gets trusted either.
+- **Baseline from months that exist.** Only prior windows reaching back to the
+  first entry count. Otherwise importing two months of history and averaging
+  over six divides by four empty months and reports spending as tripled.
+- **Recurring detection** (`src/domain/recurring.ts`) — three occurrences
+  minimum, regular spacing (CoV ≤ 0.3) and consistent amounts (CoV ≤ 0.25).
+  Handles weekly through annual, normalises to a monthly figure, and marks a
+  series lapsed once well past due. Tuned to miss a real subscription rather
+  than invent one.
+- **Insights UI** (`src/components/Insights.tsx`) — this month vs usual, what
+  moved, a tappable group→category breakdown, and committed spend.
+
+### Design flaw caught in review, and fixed
+The first build labelled *every* detected repeat "Committed each month — money
+that leaves without a decision". The screenshot showed it listing Eating Out and
+Fuel: genuinely regular, but nobody is obliged to go to dinner. The figure
+overstated how trapped the household was — wrong in the direction that makes
+someone feel worse, which is the worst direction to be wrong in.
+
+Now split: **Committed** (rent, utilities, insurance, subscriptions, school
+fees, childcare, gym) against **Regular, but a choice**. On the test fixture
+that is £1,348.99 versus £107.00 — two different facts, and only one of them is
+an obligation.
+
+### Files changed
+New: `src/domain/{insights,insights.test,recurring,recurring.test}.ts`,
+`src/components/Insights.tsx`, `scripts/verify-insights.mjs`.
+Modified: `src/App.tsx` (restructured around Insights), `package.json`.
+
+### Checks run
+- `npm test` — **143 passed** (was 106; +37 insights/recurring)
+- `npm run verify:insights` — **19/19** in WebKit at iPhone 15, against six
+  months of generated history built relative to today
+- `npm run audit:layout` — clean on iPhone 15
+- typecheck and build clean
+
+Two failures along the way, both mine rather than the app's: a bare `.sort()` on
+numbers in a test (lexicographic, so 11.99 sorted before 9.99), and a browser
+assertion that sliced page text by character count and ran into the Recent list
+below, which legitimately shows Payroll. Both corrected; the second is now
+scoped to the section element.
+
+### Known issues / blockers
+- **Recurring detection is unvalidated against real data.** It is tuned
+  conservatively and well covered by unit tests, but no actual household
+  history has been through it. The committed-categories list is a judgement
+  call and may need adjusting once it meets real entries.
+- Templates remain per-device (slice 3 note stands).
+- Still no UI to re-rate an approximate-FX entry.
+- `icon-512.png` still 309 KB.
+- No physical-device testing; WebKit-in-Playwright only.
+
+### Next recommended task
+**Slice 5 — polish**, or better, use the app for a couple of weeks first. The
+insights are only as good as the history behind them, and the committed/habitual
+split in particular wants real entries before it is tuned further. Outstanding
+polish items are small: icon re-encoding, an FX re-rate control, and optionally
+syncing templates via the Drive payload.
+
+---
+
 ## 2026-09-13 — Slice 3: fast capture
 
 ### Goal

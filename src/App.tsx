@@ -1,8 +1,9 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { format } from 'date-fns';
-import { CATEGORY_META, GROUP_META, groupOf, isIncome, type GroupId } from './domain/categories';
+import { CATEGORY_META } from './domain/categories';
 import { formatMoney } from './domain/money';
 import { Capture } from './components/Capture';
+import { Insights } from './components/Insights';
 import { SyncPanel } from './components/SyncPanel';
 import { useLedger } from './hooks/useLedger';
 import { useSync } from './hooks/useSync';
@@ -28,24 +29,8 @@ const App: React.FC = () => {
   const [report, setReport] = useState<ParseReport | null>(null);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
+  const [showAll, setShowAll] = useState(false);
   const fileInput = useRef<HTMLInputElement | null>(null);
-
-  const totals = useMemo(() => {
-    let income = 0;
-    let spend = 0;
-    const byGroup = new Map<GroupId, number>();
-
-    for (const entry of ledger.entries) {
-      if (isIncome(entry.category)) {
-        income += entry.baseAmount;
-        continue;
-      }
-      spend += entry.baseAmount;
-      byGroup.set(groupOf(entry.category), (byGroup.get(groupOf(entry.category)) ?? 0) + entry.baseAmount);
-    }
-
-    return { income, spend, groups: [...byGroup.entries()].sort((a, b) => b[1] - a[1]) };
-  }, [ledger.entries]);
 
   const handleDriveImport = useCallback(async () => {
     setImporting(true);
@@ -53,7 +38,7 @@ const App: React.FC = () => {
     try {
       const result = await sync.importFromV1();
       if (result == null) {
-        setImportError('No money-map-data.json found in your Drive. Try the file drop below instead.');
+        setImportError('No money-map-data.json found in your Drive. Try the file drop below.');
       } else {
         setReport(result);
       }
@@ -82,7 +67,7 @@ const App: React.FC = () => {
     [mergeIn]
   );
 
-  const recent = ledger.entries.slice(0, 12);
+  const visible = showAll ? ledger.entries : ledger.entries.slice(0, 12);
 
   return (
     <div className="min-h-screen font-sans text-brand-highlight">
@@ -90,7 +75,7 @@ const App: React.FC = () => {
         <header className="flex flex-wrap items-end justify-between gap-3">
           <h1 className="text-3xl font-semibold">Money Map</h1>
           <span className="border border-brand-line bg-brand-ocean/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em]">
-            Slice 3
+            {ledger.entries.length} entries
           </span>
         </header>
 
@@ -103,78 +88,37 @@ const App: React.FC = () => {
           onRemoveTemplate={templateApi.removeTemplate}
         />
 
-        <SyncPanel
-          status={sync.status}
-          online={sync.online}
-          dirty={sync.dirty}
-          error={sync.error}
-          lastSyncedAt={sync.lastSyncedAt}
-          everGranted={sync.auth.everGranted}
-          onConnect={() => void sync.connect()}
-          onDisconnect={sync.disconnect}
-          onSyncNow={() => void sync.syncNow()}
-          onImportV1={() => void handleDriveImport()}
-          importing={importing}
-        />
+        <Insights entries={ledger.entries} />
 
-        <section className={panel}>
-          <div className="flex items-center justify-between gap-3">
-            <h2 className={label}>Totals</h2>
-            <span className="text-[10px] uppercase tracking-[0.22em] text-brand-neutral">
-              {ledger.entries.length} entries
-            </span>
-          </div>
-
-          {!loaded ? (
-            <p className="mt-3 text-xs text-brand-neutral">Reading…</p>
-          ) : ledger.entries.length === 0 ? (
-            <p className="mt-3 text-xs text-brand-neutral">
-              Nothing yet. Add an entry above, or import your history from the old app.
-            </p>
-          ) : (
-            <>
-              <div className="mt-3 grid grid-cols-2 gap-3">
-                <div className="border border-brand-line bg-brand-midnight/50 px-3 py-3">
-                  <p className={label}>Income</p>
-                  <p className="mt-1 text-lg font-semibold tabular-nums text-brand-positive">
-                    {formatMoney(totals.income)}
-                  </p>
-                </div>
-                <div className="border border-brand-line bg-brand-midnight/50 px-3 py-3">
-                  <p className={label}>Spend</p>
-                  <p className="mt-1 text-lg font-semibold tabular-nums text-brand-accent">
-                    {formatMoney(totals.spend)}
-                  </p>
-                </div>
-              </div>
-
-              <h3 className={`${label} mt-5`}>By group</h3>
-              <ul className="mt-2 divide-y divide-brand-line border border-brand-line bg-brand-midnight/30">
-                {totals.groups.map(([group, value]) => (
-                  <li key={group} className="flex items-center gap-3 px-3 py-2 text-xs">
-                    <span
-                      className="h-2.5 w-2.5 shrink-0 border border-brand-line"
-                      style={{ backgroundColor: GROUP_META[group].color }}
-                    />
-                    <span className="flex-1 truncate">{GROUP_META[group].label}</span>
-                    <span className="tabular-nums text-brand-neutral">
-                      {totals.spend > 0 ? Math.round((value / totals.spend) * 100) : 0}%
-                    </span>
-                    <span className="w-20 text-right font-semibold tabular-nums">
-                      {formatMoney(value)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </section>
-
-        {recent.length > 0 ? (
+        {!loaded ? (
           <section className={panel}>
-            <h2 className={label}>Recent</h2>
+            <p className="text-xs text-brand-neutral">Reading…</p>
+          </section>
+        ) : ledger.entries.length === 0 ? (
+          <section className={panel}>
+            <h2 className={label}>Nothing here yet</h2>
+            <p className="mt-2 text-xs text-brand-neutral">
+              Add an entry above, or import your history from the old app to see where the money
+              has been going.
+            </p>
+          </section>
+        ) : (
+          <section className={panel}>
+            <div className="flex items-center justify-between gap-3">
+              <h2 className={label}>Recent</h2>
+              {ledger.entries.length > 12 ? (
+                <button
+                  type="button"
+                  onClick={() => setShowAll((open) => !open)}
+                  className="text-[10px] font-semibold uppercase tracking-[0.2em] text-brand-neutral transition hover:text-brand-amber"
+                >
+                  {showAll ? 'Show less' : `Show all ${ledger.entries.length}`}
+                </button>
+              ) : null}
+            </div>
+
             <ul className="mt-3 divide-y divide-brand-line border border-brand-line bg-brand-midnight/30">
-              {recent.map((entry) => {
+              {visible.map((entry) => {
                 const meta = CATEGORY_META[entry.category];
                 const income = meta.kind === 'income';
                 return (
@@ -205,8 +149,6 @@ const App: React.FC = () => {
                       {income ? '+' : '−'}
                       {formatMoney(entry.baseAmount)}
                     </span>
-                    {/* 26px before — below Apple's 44pt minimum, on a
-                        destructive action sitting next to a scrollable list. */}
                     <button
                       type="button"
                       onClick={() => deleteEntry(entry.id)}
@@ -227,12 +169,26 @@ const App: React.FC = () => {
               })}
             </ul>
           </section>
-        ) : null}
+        )}
+
+        <SyncPanel
+          status={sync.status}
+          online={sync.online}
+          dirty={sync.dirty}
+          error={sync.error}
+          lastSyncedAt={sync.lastSyncedAt}
+          everGranted={sync.auth.everGranted}
+          onConnect={() => void sync.connect()}
+          onDisconnect={sync.disconnect}
+          onSyncNow={() => void sync.syncNow()}
+          onImportV1={() => void handleDriveImport()}
+          importing={importing}
+        />
 
         <section className={panel}>
           <h2 className={label}>Import from a file</h2>
           <p className="mt-2 text-[11px] text-brand-neutral">
-            If the Drive import above cannot find your old backup, download{' '}
+            If the Drive import cannot find your old backup, download{' '}
             <code className="border border-brand-line bg-brand-midnight px-1">money-map-data.json</code>{' '}
             and drop it here. Importing twice is safe.
           </p>
@@ -302,10 +258,6 @@ const App: React.FC = () => {
             </div>
           ) : null}
         </section>
-
-        <footer className="px-1 pb-6 text-[10px] uppercase tracking-[0.22em] text-brand-neutral">
-          Insights land in slice 4.
-        </footer>
       </main>
     </div>
   );
