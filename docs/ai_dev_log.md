@@ -4,6 +4,76 @@ Newest entry first. Factual and concise; partial work is stated as partial.
 
 ---
 
+## 2026-09-13 — Notes reach the export
+
+### The question
+Does a spoken or typed description end up in the note, so a spreadsheet can
+compare one supermarket against another?
+
+### What checking found
+1. **Yes.** `£2.5 tesco` → amount 2.50, note `tesco`, category Supermarket.
+   Already working.
+2. **But casing was inconsistent.** Typed `2.50 Tesco` kept the capital;
+   dictated `forty five pounds Tesco` came back `tesco`, because
+   `normaliseSpokenAmount` lowercased the whole string to match number words.
+   The same shop would have split into two rows in any spreadsheet grouping.
+3. **There was no export at all.** v1 had one; it was never ported. The
+   analysis being planned was not possible.
+
+### Fixes
+- The spoken normaliser now emits every non-number token **exactly as spoken**,
+  matching on a lowercased copy. Dictation capitalises proper nouns and that
+  capital is worth keeping, precisely because the note is what gets filtered.
+- **CSV export** (`src/domain/exportCsv.ts`), in Settings → Export.
+
+### Why CSV and not .xlsx
+v1 used SheetJS. Its npm distribution carries known prototype-pollution and
+ReDoS advisories, and it pulls roughly 400KB into an app whose entire bundle is
+smaller than that. CSV needs no dependency, opens straight into Excel and
+Numbers, and will still be readable in ten years — which matters more for a
+household's own financial history than cell formatting.
+
+Three details that are easy to get wrong:
+- **A byte order mark**, or Excel on Windows renders `£` and `Inês` as mojibake.
+- **Formula neutralisation.** A cell starting `=`, `+`, `-` or `@` is *executed*
+  when the file opens. A note is free text somebody typed, so it is prefixed
+  with an apostrophe — `=HYPERLINK(...)` in a note is a genuine exfiltration
+  route out of an innocuous spreadsheet.
+- **`Committed` as a column**, so the chosen-versus-owed split travels with the
+  data and a pivot table does not have to reconstruct it.
+
+### Files changed
+New: `src/domain/{exportCsv,exportCsv.test}.ts`.
+Modified: `src/domain/spokenNumbers.ts` (casing), `src/components/Settings.tsx`,
+`scripts/verify-capture.mjs`.
+
+### Checks run
+- `npm test` — **253 passed** (was 241; +12 on the export)
+- `npm run verify:all` — **113 browser checks**; capture now asserts the
+  description reaches the note and that a dictated capital survives
+- `npm run audit:layout` — clean on iPhone 15 and iPhone 13 Mini
+- Generated CSV inspected directly; quoting, BOM and column order confirmed
+- typecheck and build clean; precache 718 KB
+
+### Known issues / blockers
+- **The download itself is untested on a real iPhone.** A blob download works in
+  Safari, but behaviour inside an installed home-screen PWA needs confirming on
+  a device.
+- Notes are still free text, so `Tesco` and `Tescos` remain different strings.
+  Grouping by note is a spreadsheet's job, not the app's — but a "tidy up
+  similar notes" tool would be a reasonable future addition.
+- The keyboard swap remains unverified on a real device (previous entry).
+- The user guide mentions neither the ABC button, dictation, nor the export.
+- Streak detection still not built; committed split still unvalidated against
+  real data; favourites sync unproven across two devices.
+
+### Next recommended task
+One pass on a real iPhone covering all three unverified things: that ABC raises
+the letter keyboard, that dictation reaches the field, and that the CSV
+downloads. Then update the guide to cover them.
+
+---
+
 ## 2026-09-13 — Keypad switch and dictation
 
 ### The bug

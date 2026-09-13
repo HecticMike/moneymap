@@ -105,7 +105,29 @@ check('understands a dictated category', /fuel/i.test(dictated));
 await page.getByRole('button', { name: /^add £/i }).click();
 await page.waitForTimeout(800);
 check('a dictated entry saves', /3 entries/i.test(await page.locator('body').innerText()));
+
 check('saving returns to the number keypad', (await amount.getAttribute('inputmode')) === 'decimal');
+
+// The description has to reach the note, or a spreadsheet cannot tell one shop
+// from another later — the categories alone never could.
+const recentText = await page.evaluate(() => {
+  const section = [...document.querySelectorAll('section')].find((el) =>
+    /^recent/i.test(el.innerText.trim())
+  );
+  return section?.innerText ?? '';
+});
+check('the description is kept as the note', /fuel/i.test(recentText));
+
+// Dictation capitalises proper nouns; that capital has to survive, or "Tesco"
+// and "tesco" split into two shops in the export.
+await page.getByRole('button', { name: /switch to the letter keyboard/i }).click();
+await page.waitForTimeout(300);
+await amount.fill('two pounds fifty Tesco');
+await page.waitForTimeout(500);
+const cased = await page.locator('form').innerText();
+check('a dictated amount with pence is understood', /add £2\.50/i.test(cased));
+check('the capital in a dictated shop name survives', /Tesco/.test(cased));
+
 
 if (shot != null) await page.screenshot({ path: shot, fullPage: true });
 

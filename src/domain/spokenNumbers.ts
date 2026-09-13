@@ -182,7 +182,14 @@ const readRun = (tokens: string[], start: number): Run | null => {
 export const normaliseSpokenAmount = (raw: string): string => {
   if (typeof raw !== 'string' || raw.trim() === '') return raw;
 
-  const tokens = raw.trim().toLowerCase().split(/\s+/);
+  // Matching happens on lowercased tokens, but anything that is not part of the
+  // number run is emitted **exactly as spoken**. Dictation capitalises proper
+  // nouns, and that capital is worth keeping: the note is what gets filtered in
+  // a spreadsheet later, and "Tesco" and "tesco" reading as two different shops
+  // would quietly split the comparison.
+  const original = raw.trim().split(/\s+/);
+  const tokens = original.map((token) => token.toLowerCase());
+
   const out: string[] = [];
   let index = 0;
   let amountTaken = false;
@@ -202,7 +209,7 @@ export const normaliseSpokenAmount = (raw: string): string => {
       }
     }
 
-    out.push(token);
+    out.push(original[index]!);
     index += 1;
   }
 

@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import type { FavouriteDraft } from '../domain/favourites';
+import { csvFilename, toCsv } from '../domain/exportCsv';
 import { CURRENCY_META } from '../domain/money';
 import { HOUSEHOLD } from '../domain/people';
 import type { CurrencyCode, Entry, Favourite } from '../domain/types';
@@ -90,6 +91,27 @@ export const Settings: React.FC<SettingsProps> = ({
 }) => {
   const fileInput = useRef<HTMLInputElement | null>(null);
   const [showImport, setShowImport] = useState(false);
+  const [exported, setExported] = useState<string | null>(null);
+
+  /**
+   * Built and released in the browser — the file never leaves the phone, which
+   * is the same promise the rest of the app makes about this data.
+   */
+  const downloadCsv = () => {
+    const blob = new Blob([toCsv(entries)], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+
+    link.href = url;
+    link.download = csvFilename();
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    // Revoking immediately can cancel the download on some browsers.
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+
+    setExported(`Saved ${csvFilename()} to your downloads.`);
+  };
 
   return (
     <Sheet open={open} onClose={onClose} title="Settings">
@@ -235,6 +257,20 @@ export const Settings: React.FC<SettingsProps> = ({
           onImportV1={onImportV1}
           importing={importing}
         />
+      </Section>
+
+      <Section
+        title="Export"
+        hint="A spreadsheet file with every entry, one row each. The note is its own column, so one shop can be compared against another."
+      >
+        <Button variant="outline" onClick={downloadCsv} disabled={entries.length === 0}>
+          {entries.length === 0
+            ? 'Nothing to export yet'
+            : `Download ${entries.length} entries`}
+        </Button>
+        {exported != null ? (
+          <p className="mt-2.5 text-caption text-brand-positive">{exported}</p>
+        ) : null}
       </Section>
 
       <Section title="Import">
