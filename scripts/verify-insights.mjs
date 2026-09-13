@@ -78,16 +78,51 @@ const check = (name, pass) => results.push({ name, pass: Boolean(pass) });
 
 check('all entries imported', new RegExp(`${expenses.length} entries`, 'i').test(body));
 
-// --- the month comparison ----------------------------------------------------
-check('this-month panel rendered', /this month so far/i.test(body));
+// --- the headline is choices, not total spend --------------------------------
+check('choices panel rendered', /what you chose/i.test(body));
 check('comparison against a baseline shown', /usual/i.test(body));
 // The honesty requirement: the comparison must say which days it compared.
 check('like-for-like window labelled', /same days of/i.test(body));
 check('did not claim insufficient history', !/not enough history/i.test(body));
 
-// --- movers ------------------------------------------------------------------
-check('movers panel rendered', /what moved/i.test(body));
-check('caught the eating-out blowout', /leisure & lifestyle/i.test(body));
+// This month: rent 1250 + Netflix 9.99 + electric 91 are obligations; Tesco 60
+// plus two meals out (240 + 180) are choices. The headline must be the 480 the
+// household decided, not the 1,830 that left the account.
+const chosenSection = await page.evaluate(() => {
+  const section = [...document.querySelectorAll('section')].find((el) =>
+    /what you chose/i.test(el.innerText.slice(0, 40))
+  );
+  return section?.innerText ?? '';
+});
+// Scoped to the display-sized figure: the total legitimately appears lower
+// down as context ("£1,830.99 out in total"), so asserting its absence across
+// the whole section would be testing the wrong thing.
+const headlineFigure = await page.evaluate(() => {
+  const section = [...document.querySelectorAll('section')].find((el) =>
+    /what you chose/i.test(el.innerText.slice(0, 40))
+  );
+  return section?.querySelector('.text-display')?.textContent ?? '';
+});
+check('headline is chosen spend', /£480\.00/.test(headlineFigure));
+check('headline is NOT total spend', !/1,830/.test(headlineFigure));
+check('total still shown as context', /£1,830\.99/.test(chosenSection));
+check('obligations reported separately', /£1,350\.99/.test(chosenSection));
+check('obligations labelled as already spoken for', /already spoken for/i.test(chosenSection));
+
+// --- where the choices went --------------------------------------------------
+check('choices breakdown rendered', /where the choices went/i.test(body));
+const choicesSection = await page.evaluate(() => {
+  const section = [...document.querySelectorAll('section')].find((el) =>
+    /where the choices went/i.test(el.innerText.slice(0, 40))
+  );
+  return section?.innerText ?? '';
+});
+check('caught the eating-out blowout', /eating out/i.test(choicesSection));
+// 420 of 480 chosen = 88%. Out of total spend it would be a trivial 23% —
+// which is the dilution the whole split exists to remove.
+check('share is out of chosen spend, not everything', /8[0-9]%/.test(choicesSection));
+check('obligations kept out of the choices list', !/rent/i.test(choicesSection));
+check('offers the lever', /back to usual would free/i.test(choicesSection));
 
 // --- recurring ---------------------------------------------------------------
 check('committed spend panel rendered', /committed each month/i.test(body));
@@ -115,6 +150,24 @@ const billsOnly = committedSection.slice(0, committedSection.search(/regular, bu
 check('eating out kept out of the bills list', !/eating out/i.test(billsOnly));
 check('fuel kept out of the bills list', !/fuel/i.test(billsOnly));
 check('rent and subscriptions are in the bills list', /rent/i.test(billsOnly) && /netflix/i.test(billsOnly));
+
+// --- the breakdown is period-scoped again ------------------------------------
+check('range selector rendered', /1M/.test(body) && /1Y/.test(body));
+const before = await page.evaluate(() => {
+  const section = [...document.querySelectorAll('section')].find((el) =>
+    /where it goes/i.test(el.innerText.slice(0, 40))
+  );
+  return section?.innerText ?? '';
+});
+await page.getByRole('button', { name: '1M', exact: true }).click();
+await page.waitForTimeout(400);
+const after = await page.evaluate(() => {
+  const section = [...document.querySelectorAll('section')].find((el) =>
+    /where it goes/i.test(el.innerText.slice(0, 40))
+  );
+  return section?.innerText ?? '';
+});
+check('changing the range changes the figures', before !== after);
 
 // --- drill-down --------------------------------------------------------------
 await page.getByRole('button', { name: /living & home/i }).first().click();

@@ -56,11 +56,44 @@ export const comparableWindows = (now: Date, count: number): DateWindow[] => {
   return windows;
 };
 
+export type RangeId = '1m' | '3m' | '6m' | '12m' | 'all';
+
+export const RANGES: Array<{ id: RangeId; label: string }> = [
+  { id: '1m', label: '1M' },
+  { id: '3m', label: '3M' },
+  { id: '6m', label: '6M' },
+  { id: '12m', label: '1Y' },
+  { id: 'all', label: 'All' }
+];
+
+/**
+ * A window covering the last N months up to now.
+ *
+ * v1 had this and v2 lost it, which left the breakdown showing all-time totals
+ * — a panel that is 90% rent on day one and gets less useful every month, since
+ * all-time figures are dominated by whatever is oldest and largest.
+ */
+export const rangeWindow = (now: Date, range: RangeId): DateWindow => {
+  const end = endOfDay(now);
+  if (range === 'all') {
+    return { start: new Date(0), end, throughDayOfMonth: now.getDate() };
+  }
+
+  const months = range === '1m' ? 1 : range === '3m' ? 3 : range === '6m' ? 6 : 12;
+  return {
+    start: startOfMonth(subMonths(now, months - 1)),
+    end,
+    throughDayOfMonth: now.getDate()
+  };
+};
+
 const inWindow = (entry: Entry, window: DateWindow): boolean => {
   const when = new Date(entry.date).getTime();
   if (Number.isNaN(when)) return false;
   return when >= window.start.getTime() && when <= window.end.getTime();
 };
+
+export const entryInWindow = inWindow;
 
 /** Total expense spend (in base currency) inside a window. Income is excluded. */
 export const spendIn = (

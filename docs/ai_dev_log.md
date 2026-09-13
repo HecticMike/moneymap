@@ -4,6 +4,75 @@ Newest entry first. Factual and concise; partial work is stated as partial.
 
 ---
 
+## 2026-09-13 — Choices, not total spend
+
+### Goal
+Push harder on the actual end goal: *know where we're spending more*.
+
+### The reframe
+The headline was total spend — £1,830 for the month, most of it rent. That
+invites the question "where does the money go?", whose honest answer is "rent,
+forever": true, unchanging, and unactionable.
+
+The headline is now **what was chosen**: £480, with £1,350.99 shown separately
+as *already spoken for*. Every proportion underneath is a share of the chosen
+figure, so Eating Out reads as **88% of what was decided** rather than 23% of
+everything. Same data, different denominator, completely different question.
+
+`src/domain/choices.ts` decides what counts as committed from the **actual
+entries** — an entry is committed only if it matches a detected, still-active,
+committed series. Prorating a modelled monthly commitment would report rent as
+partly paid on the 3rd, which is not what happened.
+
+### Also
+- **The lever.** Anything meaningfully above its baseline now reads "Back to
+  usual would free £398" — the same number as the delta, framed as something
+  that can be acted on. Below baseline reads "£55 less than usual".
+- **"Where it goes" is period-scoped again** (1M/3M/6M/1Y/All). It had been
+  all-time since slice 4, which is 90% rent on day one and gets less useful
+  every month. A regression fixed, not a feature.
+- A category with nothing spent still appears when its absence is notable
+  (fuel: "£55 less than usual" — nobody has filled up yet), but without a 0%
+  bar, which was just noise.
+
+### Two process notes
+- A Python patch script wrote literal backspace characters where `\b` was
+  intended, producing a regex that could never match. Caught because the check
+  failed; worth remembering that `\b` in a non-raw Python string is a backspace.
+- The range buttons failed the tap-target audit at 32×36, and the first fix was
+  to **relax the audit** to a 40px floor. That is motivated reasoning — the
+  rule was changed after the design failed it. Reverted; the buttons are 44px.
+
+### Files changed
+New: `src/domain/{choices,choices.test}.ts`.
+Modified: `src/domain/insights.ts` (`rangeWindow`, `RANGES`, `entryInWindow`),
+`src/components/Insights.tsx` (rewritten), `scripts/verify-insights.mjs`.
+
+### Checks run
+- `npm test` — **190 passed** (was 170; +20 on the choices split)
+- `npm run verify:all` — **72 browser checks**, including that the headline is
+  £480 and *not* £1,830, and that obligations never appear among the choices
+- `npm run audit:layout` — clean on iPhone 15 and iPhone 13 Mini, main + sheet
+- typecheck and build clean; precache 698 KB
+
+### Known issues / blockers
+- **No trajectory.** "More" still means "more than a six-month average", which
+  detects blips, not drift. Sparklines and streak detection ("above average
+  four months running") are the natural next step and were the option not
+  taken.
+- The committed/discretionary split leans entirely on recurring detection,
+  which remains unvalidated against real data. If it misses a real bill, that
+  bill lands in "choices" and inflates the headline.
+- Favourites sync still unproven across two devices.
+- `icon-512.png` still 309 KB; no UI to re-rate an approximate-FX entry.
+
+### Next recommended task
+Use it for a few weeks, then trajectory — sparklines per group and streak
+detection over the *chosen* figure, which is far more informative than a
+sparkline including rent, flat by definition.
+
+---
+
 ## 2026-09-13 — Settings sheet, delete confirmation, design pass
 
 ### Goal
