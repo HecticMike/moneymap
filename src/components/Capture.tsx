@@ -13,7 +13,7 @@ import { HOUSEHOLD } from '../domain/people';
 import { learnNoteAssociations, suggestCategoryChips } from '../domain/suggestions';
 import type { CurrencyCode, Entry, Favourite } from '../domain/types';
 import type { AddResult, EntryDraft } from '../hooks/useLedger';
-import { Favourites } from './Favourites';
+import { FavouriteChips, SaveAsFavourite } from './Favourites';
 import { Button, Card, Chip, Label, Segmented, cx } from './ui';
 
 interface CaptureProps {
@@ -21,10 +21,12 @@ interface CaptureProps {
   favourites: Favourite[];
   /** Who this phone belongs to; defaults the person on new entries. */
   owner: string | null;
+  /** Chosen in Settings — this screen only reports it. */
+  currency: CurrencyCode;
   onAdd: (draft: EntryDraft) => Promise<AddResult>;
   onUseFavourite: (id: string) => void;
   onAddFavourite: (draft: FavouriteDraft) => void;
-  onRemoveFavourite: (id: string) => void;
+  onOpenSettings: () => void;
 }
 
 const dayOffset = (days: number): string => {
@@ -40,13 +42,13 @@ export const Capture: React.FC<CaptureProps> = ({
   entries,
   favourites,
   owner,
+  currency,
   onAdd,
   onUseFavourite,
   onAddFavourite,
-  onRemoveFavourite
+  onOpenSettings
 }) => {
   const [text, setText] = useState('');
-  const [currency, setCurrency] = useState<CurrencyCode>('GBP');
   const [kind, setKind] = useState<'expense' | 'income'>('expense');
 
   // Explicit choices win over anything parsed from the text. Kept as separate
@@ -88,7 +90,6 @@ export const Capture: React.FC<CaptureProps> = ({
 
   const applyFavourite = (favourite: Favourite) => {
     onUseFavourite(favourite.id);
-    setCurrency(favourite.currency);
     setCategoryOverride(favourite.category as CategoryId);
     setNoteOverride(favourite.note);
     // A shared favourite leaves the person alone; a personal one attributes the
@@ -163,20 +164,27 @@ export const Capture: React.FC<CaptureProps> = ({
             valid ? 'border-brand-highlight/60 shadow-glow' : 'border-edge'
           )}
         >
-          {/* One button rather than a stacked pair: there are only two
-              currencies, so tapping to switch is faster than choosing, and it
-              leaves a proper 44px target instead of two cramped ones. */}
+          {/* An indicator, not a control — the currency is chosen in Settings,
+              because it changes when the household travels rather than between
+              one coffee and the next. It stays visible here so a forgotten
+              switch is obvious instead of silent, and tapping it goes straight
+              to where it can be changed. */}
           <button
             type="button"
-            onClick={() => setCurrency(currency === 'GBP' ? 'EUR' : 'GBP')}
-            aria-label={`Currency: ${CURRENCY_META[currency].label}. Tap to switch.`}
-            className="pressable tap-target flex w-14 shrink-0 flex-col items-center justify-center gap-0.5 border-r border-edge bg-surface-high/40 text-ink hover:bg-surface-high"
+            onClick={onOpenSettings}
+            aria-label={`Capturing in ${CURRENCY_META[currency].label}. Change in settings.`}
+            className={cx(
+              'pressable tap-target flex w-14 shrink-0 flex-col items-center justify-center gap-0.5 border-r',
+              currency === 'GBP'
+                ? 'border-edge bg-surface-high/40'
+                : 'border-brand-highlight/40 bg-brand-highlight/10'
+            )}
           >
             <span className="text-figure font-semibold leading-none text-brand-highlight">
               {CURRENCY_META[currency].symbol}
             </span>
             <span className="text-[9px] uppercase tracking-[0.1em] text-ink-faint" aria-hidden>
-              swap
+              {currency}
             </span>
           </button>
           <input
@@ -220,15 +228,7 @@ export const Capture: React.FC<CaptureProps> = ({
         ) : null}
 
         <div className="mt-5">
-          <Favourites
-            favourites={favourites}
-            entries={entries}
-            owner={owner}
-            onApply={applyFavourite}
-            onAdd={onAddFavourite}
-            onRemove={onRemoveFavourite}
-            current={{ category, currency, note, person: person === '' ? null : person }}
-          />
+          <FavouriteChips favourites={favourites} owner={owner} onApply={applyFavourite} />
         </div>
 
         <div className="mt-5">
@@ -349,6 +349,15 @@ export const Capture: React.FC<CaptureProps> = ({
         <Button type="submit" variant="primary" full disabled={!valid || busy} className="mt-5">
           {busy ? 'Saving…' : valid ? `Add ${formatMoney(amount, currency)}` : 'Add entry'}
         </Button>
+
+        {/* Only offered once there is a note worth naming a shortcut after. */}
+        <SaveAsFavourite
+          current={{ category, note }}
+          favourites={favourites}
+          owner={owner}
+          currency={currency}
+          onAdd={onAddFavourite}
+        />
 
         {problem != null ? (
           <p className="mt-3 rounded-control border border-brand-accent/40 bg-brand-accent/10 px-3.5 py-2.5 text-caption text-brand-accent">

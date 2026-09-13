@@ -9,9 +9,7 @@
  *   node scripts/verify-insights.mjs
  */
 import { webkit, devices } from 'playwright';
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { claimPhone, importBackup, writeBackup } from './_helpers.mjs';
 
 const url = process.argv[2] ?? 'http://localhost:5173/';
 const shot = process.argv[3] ?? null;
@@ -60,8 +58,7 @@ expenses.push(entry(0, soFar(4), 60, 'living_home_supermarket', 'Tesco'));
 expenses.push(entry(0, soFar(6), 240, 'leisure_lifestyle_eating_out', 'Birthday dinner'));
 expenses.push(entry(0, soFar(7), 180, 'leisure_lifestyle_eating_out', 'Weekend away meals'));
 
-const file = join(mkdtempSync(join(tmpdir(), 'mm-')), 'money-map-data.json');
-writeFileSync(file, JSON.stringify({ expenses, tombstones: [], syncedAt: now.toISOString(), version: 2 }));
+const file = writeBackup({ expenses, tombstones: [], syncedAt: now.toISOString(), version: 2 });
 
 const browser = await webkit.launch();
 const context = await browser.newContext({ ...devices['iPhone 15'] });
@@ -72,8 +69,8 @@ page.on('console', (m) => m.type() === 'error' && problems.push(`console: ${m.te
 page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
 
 await page.goto(url, { waitUntil: 'networkidle' });
-await page.setInputFiles('input[type=file]', file);
-await page.waitForTimeout(1500);
+await claimPhone(page, 'Miguel');
+await importBackup(page, file);
 
 const body = await page.locator('body').innerText();
 const results = [];

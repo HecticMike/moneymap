@@ -9,9 +9,7 @@
  *   node scripts/verify-import.mjs
  */
 import { chromium, devices } from 'playwright';
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { claimPhone, importBackup, writeBackup } from './_helpers.mjs';
 
 const url = process.argv[2] ?? 'http://localhost:5173/';
 const shot = process.argv[3] ?? null;
@@ -35,8 +33,7 @@ const backup = {
   version: 2
 };
 
-const file = join(mkdtempSync(join(tmpdir(), 'mm-')), 'money-map-data.json');
-writeFileSync(file, JSON.stringify(backup));
+const file = writeBackup(backup);
 
 const browser = await chromium.launch();
 const context = await browser.newContext({ ...devices['iPhone 13'] });
@@ -47,8 +44,8 @@ page.on('console', (m) => m.type() === 'error' && problems.push(`console: ${m.te
 page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
 
 await page.goto(url, { waitUntil: 'networkidle' });
-await page.setInputFiles('input[type=file]', file);
-await page.waitForTimeout(1200);
+await claimPhone(page, 'Miguel');
+const importReport = await importBackup(page, file);
 
 const afterImport = await page.locator('body').innerText();
 
@@ -61,7 +58,7 @@ const whereItGoes = await page.evaluate(() => {
 
 // The real test of IndexedDB persistence: reload and see if it survived.
 await page.reload({ waitUntil: 'networkidle' });
-await page.waitForTimeout(1200);
+await page.waitForTimeout(1400);
 const afterReload = await page.locator('body').innerText();
 
 if (shot != null) await page.screenshot({ path: shot, fullPage: true });
@@ -72,13 +69,13 @@ const check = (name, condition) => ({ name, pass: Boolean(condition) });
 // uppercase` widely, and innerText reports text as *rendered*, so a label
 // written "6 entries" in JSX comes back as "6 ENTRIES".
 const results = [
-  check('import reported 6 of 7 entries', /6 of 7 entries imported/i.test(afterImport)),
-  check('flagged the one unreadable entry', /1 skipped as unreadable/i.test(afterImport)),
-  check('moved the dead category to Other', /1 moved to Other/i.test(afterImport)),
+  check('import reported 6 of 7 entries', /6 of 7 entries imported/i.test(importReport)),
+  check('flagged the one unreadable entry', /1 skipped as unreadable/i.test(importReport)),
+  check('moved the dead category to Other', /1 moved to Other/i.test(importReport)),
   // Entries 'e' and 'f' both arrive without createdAt/updatedAt. 'g' is
   // rejected on its amount before timestamps are ever considered.
-  check('backfilled both sets of missing timestamps', /2 timestamps backfilled/i.test(afterImport)),
-  check('carried the deletion over', /1 deletions carried over/i.test(afterImport)),
+  check('backfilled both sets of missing timestamps', /2 timestamps backfilled/i.test(importReport)),
+  check('carried the deletion over', /1 deletions carried over/i.test(importReport)),
   check('entry count rendered', /6 entries/i.test(afterImport)),
   check('income total rendered', /£2,400\.00/.test(afterImport)),
   check('group rollup rendered', /Living & Home/i.test(afterImport) && /Mobility & Transport/i.test(afterImport)),

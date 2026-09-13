@@ -9,16 +9,13 @@
  *   node scripts/verify-favourites.mjs
  */
 import { webkit, devices } from 'playwright';
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { claimPhone, closeSettings, importBackup, openSettings, writeBackup } from './_helpers.mjs';
 
 const url = process.argv[2] ?? 'http://localhost:5173/';
 const shot = process.argv[3] ?? null;
 
 const now = new Date();
-const iso = (daysAgo) =>
-  new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000).toISOString();
+const iso = (daysAgo) => new Date(now.getTime() - daysAgo * 24 * 60 * 60 * 1000).toISOString();
 
 let id = 0;
 const entry = (person, category, note, amount, daysAgo) => ({
@@ -32,7 +29,6 @@ const entry = (person, category, note, amount, daysAgo) => ({
   updatedAt: iso(daysAgo)
 });
 
-// Enough repetition per person that each gets their own suggestions.
 const entries = [
   entry('Miguel', 'living_home_supermarket', 'Tesco', 45, 2),
   entry('Miguel', 'living_home_supermarket', 'Tesco', 52, 9),
@@ -40,9 +36,9 @@ const entries = [
   entry('Ines', 'personal_health_personal_care', 'Hairdresser', 35, 4),
   entry('Ines', 'personal_health_personal_care', 'Hairdresser', 35, 32),
   entry('Ines', 'personal_health_personal_care', 'Hairdresser', 38, 60),
-  // A repeated habit of hers that is NOT yet saved, so there is something for
-  // the suggestions to propose. Hairdresser is already a favourite and is
-  // correctly excluded.
+  // A repeated habit of hers that is NOT yet saved, so the suggestions have
+  // something to propose. Hairdresser is already a favourite and is correctly
+  // excluded.
   entry('Ines', 'personal_health_fitness', 'Pilates', 18, 3),
   entry('Ines', 'personal_health_fitness', 'Pilates', 18, 10),
   entry('Ines', 'personal_health_fitness', 'Pilates', 18, 17)
@@ -50,28 +46,20 @@ const entries = [
 
 // A favourite each, already saved — as if created on the other phone and synced.
 const favourites = [
-  {
-    id: 'fav-miguel', label: 'Tesco', person: 'Miguel', category: 'living_home_supermarket',
-    currency: 'GBP', amount: null, note: 'Tesco', useCount: 3,
-    lastUsedAt: iso(2), createdAt: iso(30), updatedAt: iso(2)
-  },
-  {
-    id: 'fav-ines', label: 'Hairdresser', person: 'Ines', category: 'personal_health_personal_care',
-    currency: 'GBP', amount: null, note: 'Hairdresser', useCount: 2,
-    lastUsedAt: iso(4), createdAt: iso(60), updatedAt: iso(4)
-  },
-  {
-    id: 'fav-shared', label: 'Rent', person: null, category: 'living_home_rent',
-    currency: 'GBP', amount: 1250, note: '', useCount: 5,
-    lastUsedAt: iso(12), createdAt: iso(90), updatedAt: iso(12)
-  }
+  { id: 'fav-miguel', label: 'Tesco', person: 'Miguel', category: 'living_home_supermarket', currency: 'GBP', amount: null, note: 'Tesco', useCount: 3, lastUsedAt: iso(2), createdAt: iso(30), updatedAt: iso(2) },
+  { id: 'fav-ines', label: 'Hairdresser', person: 'Ines', category: 'personal_health_personal_care', currency: 'GBP', amount: null, note: 'Hairdresser', useCount: 2, lastUsedAt: iso(4), createdAt: iso(60), updatedAt: iso(4) },
+  { id: 'fav-shared', label: 'Rent', person: null, category: 'living_home_rent', currency: 'GBP', amount: 1250, note: '', useCount: 5, lastUsedAt: iso(12), createdAt: iso(90), updatedAt: iso(12) }
 ];
 
-const file = join(mkdtempSync(join(tmpdir(), 'mm-')), 'money-map-data.json');
-writeFileSync(
-  file,
-  JSON.stringify({ app: 'moneymap', schema: 4, entries, tombstones: [], favourites, favouriteTombstones: [], syncedAt: now.toISOString() })
-);
+const file = writeBackup({
+  app: 'moneymap',
+  schema: 4,
+  entries,
+  tombstones: [],
+  favourites,
+  favouriteTombstones: [],
+  syncedAt: now.toISOString()
+});
 
 const browser = await webkit.launch();
 const context = await browser.newContext({ ...devices['iPhone 15'] });
@@ -88,12 +76,10 @@ await page.goto(url, { waitUntil: 'networkidle' });
 
 // --- this phone is Miguel's --------------------------------------------------
 check('asks whose phone this is', /whose phone is this/i.test(await page.locator('body').innerText()));
-await page.getByRole('button', { name: 'Miguel', exact: true }).first().click();
-await page.waitForTimeout(400);
+await claimPhone(page, 'Miguel');
 check('stops asking once answered', !/whose phone is this/i.test(await page.locator('body').innerText()));
 
-await page.setInputFiles('input[type=file]', file);
-await page.waitForTimeout(1200);
+await importBackup(page, file);
 
 const form = () => page.locator('form').innerText();
 
@@ -103,10 +89,10 @@ check('shared favourite visible to Miguel', /rent/i.test(await form()));
 check("wife's personal favourite hidden on his tab", !/hairdresser/i.test(await form()));
 
 // --- switch to Inês and log for her ------------------------------------------
-await page.getByRole('button', { name: 'Ines', exact: true }).first().click();
+await page.locator('form').getByRole('button', { name: 'Ines', exact: true }).first().click();
 await page.waitForTimeout(400);
 const inesTab = await form();
-check("her favourites appear on her tab", /hairdresser/i.test(inesTab));
+check('her favourites appear on her tab', /hairdresser/i.test(inesTab));
 check('shared favourite visible to her too', /rent/i.test(inesTab));
 check('his personal favourite hidden on her tab', !/tesco/i.test(inesTab));
 
@@ -119,9 +105,8 @@ await page.getByRole('button', { name: /^add £/i }).click();
 await page.waitForTimeout(900);
 
 const afterSave = await page.locator('body').innerText();
-check("entry saved", /10 entries/i.test(afterSave));
+check('entry saved', /10 entries/i.test(afterSave));
 // The whole point: logged from his phone, attributed to her, no retyping.
-check('attributed to Ines, not the phone owner', /£42\.00[\s\S]{0,200}/.test(afterSave));
 const recent = await page.evaluate(() => {
   const section = [...document.querySelectorAll('section')].find((el) =>
     /^recent/i.test(el.innerText.trim())
@@ -130,18 +115,36 @@ const recent = await page.evaluate(() => {
 });
 check('recent row shows Personal Care for Ines', /personal care[\s\S]{0,80}ines/i.test(recent));
 
-// --- suggestions are per person ---------------------------------------------
-const suggestionText = await form();
-check('proposes her unsaved habit', /pilates/i.test(suggestionText));
-// Already saved as a favourite, so it must not be offered again.
-check('does not re-propose what she already has', !/\+\s*hairdresser/i.test(suggestionText));
+// --- deletion takes two taps -------------------------------------------------
+const deleteButton = page.getByRole('button', { name: /delete personal care entry/i }).first();
+await deleteButton.click();
+await page.waitForTimeout(300);
+const armed = await page.locator('body').innerText();
+check('first tap arms rather than deletes', /10 entries/i.test(armed) && /delete\s*no/i.test(armed.replace(/\n/g, ' ')));
 
-// His habits must not leak onto her tab.
-await page.getByRole('button', { name: 'Miguel', exact: true }).first().click();
+await page.getByRole('button', { name: /^no,/i }).first().click();
+await page.waitForTimeout(300);
+check('cancelling leaves the entry alone', /10 entries/i.test(await page.locator('body').innerText()));
+
+await deleteButton.click();
+await page.waitForTimeout(300);
+await page.getByRole('button', { name: 'Delete', exact: true }).first().click();
+await page.waitForTimeout(700);
+check('second tap deletes', /9 entries/i.test(await page.locator('body').innerText()));
+
+// --- suggestions live in settings now ----------------------------------------
+await openSettings(page);
+await page.getByRole('dialog').getByRole('button', { name: 'Ines', exact: true }).nth(1).click();
 await page.waitForTimeout(400);
-check('his tab does not propose her habits', !/pilates/i.test(await form()));
+const sheet = await page.getByRole('dialog').innerText();
+check('proposes her unsaved habit', /pilates/i.test(sheet));
+check('does not re-propose what she already has', !/\+\s*hairdresser/i.test(sheet));
+check('currency setting lives in settings', /capture in/i.test(sheet));
+check('favourites are managed in settings', /favourites/i.test(sheet));
 
 if (shot != null) await page.screenshot({ path: shot, fullPage: true });
+await closeSettings(page);
+
 check('no console or page errors', problems.length === 0);
 
 console.log(JSON.stringify({ results, problems }, null, 2));

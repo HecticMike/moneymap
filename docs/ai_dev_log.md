@@ -4,6 +4,91 @@ Newest entry first. Factual and concise; partial work is stated as partial.
 
 ---
 
+## 2026-09-13 — Settings sheet, delete confirmation, design pass
+
+### Goal
+Three requests: move the currency switch into settings and use that place to
+manage favourites; make the design more attractive; require confirmation before
+a deletion.
+
+### Settings
+A bottom sheet behind a gear in the header, holding whose phone this is, the
+capture currency, favourite management, Drive status and import. Moving all of
+that off the main screen is most of what makes the app feel calmer — the main
+screen is now capture, insights and recent entries, nothing else.
+
+**Currency as a setting, not a per-entry toggle**, because that matches how it
+is used: the household is in Portugal for a week, not switching between one
+coffee and the next. The symbol stays on the amount field — tinted when it is
+not GBP — so a forgotten switch is obvious rather than silent, and tapping it
+jumps to where it can be changed.
+
+**Favourites split in two.** `FavouriteChips` on the capture screen does one
+thing: apply a shortcut in a tap. `FavouriteManager` in settings handles adding,
+removing and suggestions. Management clutter has no business sitting between
+someone and logging a coffee.
+
+### Delete confirmation
+Two-step, inline (`ConfirmButton`): the first tap arms the button, the second
+deletes, and it disarms itself after four seconds. `window.confirm` — which v1
+used — is a jarring system modal most people dismiss without reading, and it
+puts the decision somewhere other than the thing it affects.
+
+### Design
+Header with the pixel-M mark and a gear carrying a small sync dot, so sync state
+no longer needs a card of its own. Cards gained a hairline top highlight — the
+detail that makes a dark surface look lit rather than filled. Better empty state.
+
+### Three bugs found while wiring this up
+- **Background controls stayed focusable behind the open sheet**, so it was only
+  visually modal. `main` now gets `inert` and `aria-hidden` while it is open.
+  Found because the audit reported the backdrop "overlapping" everything.
+- **The cancel button showed "No" but was labelled "Cancel"**, so its accessible
+  name did not contain its visible text — a WCAG 2.5.3 failure that breaks voice
+  control. Now "No, keep it".
+- **The sheet's close button was 36×36**, below the 44px minimum.
+
+### Verification scripts
+Extracted `scripts/_helpers.mjs`. Import and settings now live behind a sheet,
+and repeating that flow in five scripts is how they drift — which already
+happened once, when verify-import silently broke for a whole slice.
+
+`audit-layout` now measures the sheet as well as the main screen, and skips the
+modal backdrop and anything inside an `inert` subtree — principled exclusions
+rather than convenient ones.
+
+One failure along the way was mine: Playwright matches accessible names by
+*substring* by default, so `name: 'Settings'` also matched the currency
+indicator's "…Change in settings." label.
+
+### Files changed
+New: `src/components/Settings.tsx`, `scripts/_helpers.mjs`.
+Rewritten: `src/components/Favourites.tsx`, `src/App.tsx`.
+Modified: `src/components/{ui,Capture}.tsx`, `src/hooks/useSettings.ts`,
+`scripts/{audit-layout,verify-import,verify-insights,verify-capture,verify-favourites}.mjs`.
+
+### Checks run
+- `npm test` — **170 passed**
+- `npm run verify:all` — **62 browser checks** (was 59; +4 covering the
+  two-step delete and settings placement)
+- `npm run audit:layout` — clean on iPhone 15 and iPhone 13 Mini, **main screen
+  and settings sheet both**
+- typecheck and build clean; precache 695 KB
+
+### Known issues / blockers
+- The sheet has no focus trap — `inert` on the background handles screen readers
+  and tab order in modern browsers, but a full trap would be more robust.
+- Favourites still cannot be edited in place, only added and removed.
+- Favourites sync remains unproven across two real devices.
+- Recurring detection still unvalidated against real data.
+- `icon-512.png` still 309 KB; no UI to re-rate an approximate-FX entry.
+
+### Next recommended task
+Use it. The remaining items are small, and the useful feedback now is whether
+the capture screen feels quicker with management moved out of the way.
+
+---
+
 ## 2026-09-13 — Visual modernisation
 
 ### Goal

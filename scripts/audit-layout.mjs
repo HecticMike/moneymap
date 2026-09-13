@@ -11,9 +11,7 @@
  *   node scripts/audit-layout.mjs [url] [device] [screenshot]
  */
 import { webkit, devices } from 'playwright';
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { claimPhone, closeSettings, importBackup, openSettings, writeBackup } from './_helpers.mjs';
 
 const url = process.argv[2] ?? 'http://localhost:5173/';
 const deviceName = process.argv[3] ?? 'iPhone 15';
@@ -31,8 +29,7 @@ const fixture = {
   version: 2
 };
 
-const file = join(mkdtempSync(join(tmpdir(), 'mm-')), 'money-map-data.json');
-writeFileSync(file, JSON.stringify(fixture));
+const file = writeBackup(fixture);
 
 const browser = await webkit.launch();
 const context = await browser.newContext({ ...devices[deviceName] });
@@ -43,10 +40,12 @@ page.on('console', (m) => m.type() === 'error' && problems.push(`console: ${m.te
 page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
 
 await page.goto(url, { waitUntil: 'networkidle' });
-await page.setInputFiles('input[type=file]', file);
-await page.waitForTimeout(1200);
+await claimPhone(page, 'Miguel');
+await importBackup(page, file);
 
-const findings = await page.evaluate(() => {
+// Measured twice: the main screen, and the settings sheet — a whole surface
+// that would otherwise never be checked.
+const measure = () => page.evaluate(() => {
   const viewport = document.documentElement.clientWidth;
   const out = {
     viewport,
@@ -108,7 +107,13 @@ const findings = await page.evaluate(() => {
     //
     // So: genuinely cramped targets fail the audit; short-but-wide ones are
     // reported for review and do not. Nothing below 32pt is excused.
-    if (/^(button|a|select|input)$/i.test(el.tagName) && el.type !== 'file' && el.type !== 'hidden') {
+    if (
+      /^(button|a|select|input)$/i.test(el.tagName) &&
+      el.type !== 'file' &&
+      el.type !== 'hidden' &&
+      !el.hasAttribute('data-backdrop') &&
+      el.closest('[inert]') == null
+    ) {
       const height = Math.round(rect.height);
       const width = Math.round(rect.width);
 
@@ -121,9 +126,17 @@ const findings = await page.evaluate(() => {
   }
 
   // Controls that visually collide with a sibling.
+  //
+  // Two exclusions, both principled rather than convenient: a modal backdrop is
+  // *meant* to cover the page, and anything inside an `inert` subtree is not
+  // interactive at all — if a control behind an open sheet is still reachable,
+  // that is a modal bug caught by the missing `inert`, not an overlap.
   const controls = [...document.querySelectorAll('input, select, button')].filter((el) => {
     const r = el.getBoundingClientRect();
-    return r.width > 0 && r.height > 0 && el.type !== 'file';
+    if (r.width === 0 || r.height === 0 || el.type === 'file') return false;
+    if (el.hasAttribute('data-backdrop')) return false;
+    if (el.closest('[inert]') != null) return false;
+    return true;
   });
 
   for (let i = 0; i < controls.length; i += 1) {
@@ -146,14 +159,22 @@ const findings = await page.evaluate(() => {
   return out;
 });
 
+const main = await measure();
 if (shot != null) await page.screenshot({ path: shot, fullPage: true });
 
-console.log(JSON.stringify({ device: deviceName, ...findings, jsErrors: problems }, null, 2));
+await openSettings(page);
+const sheet = await measure();
+await closeSettings(page);
+
+console.log(
+  JSON.stringify({ device: deviceName, main, sheet, jsErrors: problems }, null, 2)
+);
 await browser.close();
 
-const clean =
-  findings.horizontalScroll == null &&
-  findings.overflowing.length === 0 &&
-  findings.overlaps.length === 0 &&
-  problems.length === 0;
-process.exit(clean ? 0 : 1);
+const isClean = (f) =>
+  f.horizontalScroll == null &&
+  f.overflowing.length === 0 &&
+  f.overlaps.length === 0 &&
+  f.smallTargets.length === 0;
+
+process.exit(isClean(main) && isClean(sheet) && problems.length === 0 ? 0 : 1);

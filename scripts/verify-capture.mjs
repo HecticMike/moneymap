@@ -9,6 +9,7 @@
  *   node scripts/verify-capture.mjs
  */
 import { webkit, devices } from 'playwright';
+import { claimPhone } from './_helpers.mjs';
 
 const url = process.argv[2] ?? 'http://localhost:5173/';
 const shot = process.argv[3] ?? null;
@@ -22,6 +23,7 @@ page.on('console', (m) => m.type() === 'error' && problems.push(`console: ${m.te
 page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
 
 await page.goto(url, { waitUntil: 'networkidle' });
+await claimPhone(page, 'Miguel');
 
 const amount = page.getByLabel('Amount, or amount with a description');
 const results = [];
