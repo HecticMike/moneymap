@@ -7,8 +7,8 @@ import type { ParseReport } from '../sync/ledgerFile';
 import { FavouriteManager } from './Favourites';
 import { SyncPanel } from './SyncPanel';
 import type { SyncStatus } from '../hooks/useSync';
-import type { ViewMode } from '../hooks/useSettings';
-import { Button, Label, Segmented, Sheet, cx } from './ui';
+import { CARDS, type CardId, type ViewMode } from '../domain/preferences';
+import { Button, Label, Segmented, Sheet, Well, cx } from './ui';
 
 interface SettingsProps {
   open: boolean;
@@ -16,6 +16,11 @@ interface SettingsProps {
 
   view: ViewMode;
   onViewChange: (view: ViewMode) => void;
+
+  cards: Record<CardId, boolean>;
+  onCardToggle: (card: CardId, on: boolean) => void;
+  customised: boolean;
+  onResetPreferences: () => void;
 
   owner: string | null;
   onOwnerChange: (owner: string) => void;
@@ -64,6 +69,10 @@ export const Settings: React.FC<SettingsProps> = ({
   onClose,
   view,
   onViewChange,
+  cards,
+  onCardToggle,
+  customised,
+  onResetPreferences,
   owner,
   onOwnerChange,
   captureCurrency,
@@ -103,6 +112,66 @@ export const Settings: React.FC<SettingsProps> = ({
             { value: 'balance', label: 'Balance' }
           ]}
         />
+      </Section>
+
+      {/* These are per-person. Everything above this point is the device's. */}
+      <Section
+        title={owner == null ? 'Your cards' : `${owner}'s cards`}
+        hint="Turn off anything you do not use. This only changes your phone — it does not affect what the other person sees."
+      >
+        <Well>
+          <ul className="divide-y divide-edge/60">
+            {CARDS.map((card) => {
+              const on = cards[card.id];
+              return (
+                <li key={card.id}>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={on}
+                    onClick={() => onCardToggle(card.id, !on)}
+                    className="pressable flex w-full items-center gap-3 px-3.5 py-3 text-left hover:bg-surface-high/40"
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-caption text-ink">{card.label}</span>
+                      <span className="block text-micro text-ink-faint">{card.hint}</span>
+                    </span>
+                    {/* A real switch: the state is visible without colour alone,
+                        because the knob moves. */}
+                    <span
+                      className={cx(
+                        'relative h-6 w-10 shrink-0 rounded-pill transition-colors',
+                        on ? 'bg-brand-highlight' : 'bg-surface-base'
+                      )}
+                      aria-hidden
+                    >
+                      <span
+                        className={cx(
+                          'absolute top-1 h-4 w-4 rounded-full transition-all',
+                          on ? 'left-5 bg-surface-base' : 'left-1 bg-ink-faint'
+                        )}
+                      />
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </Well>
+
+        {customised ? (
+          <button
+            type="button"
+            onClick={onResetPreferences}
+            className="tap-target pressable mt-3 px-1 text-caption text-ink-muted hover:text-brand-highlight"
+          >
+            Back to the defaults
+          </button>
+        ) : (
+          <p className="mt-3 text-micro uppercase tracking-[0.12em] text-ink-faint">
+            Currently on the defaults
+          </p>
+        )}
       </Section>
 
       <Section

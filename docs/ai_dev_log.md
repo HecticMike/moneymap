@@ -4,6 +4,81 @@ Newest entry first. Factual and concise; partial work is stated as partial.
 
 ---
 
+## 2026-09-13 — Per-person display preferences
+
+### Goal
+Keep the shipped defaults as the defaults, and let each person override what
+they see.
+
+### Scope decision
+Preferences are stored **per device but keyed by person**
+(`src/domain/preferences.ts`). Today that distinction is invisible — there is a
+phone each, so device scope and person scope are the same thing. It matters the
+moment a phone is shared or a third person appears, and keying by person now
+costs nothing. If preferences should later follow a person between devices, the
+map lifts straight into the synced ledger without reshaping.
+
+Deliberately **not synced**: Inês wanting fewer cards should not change Miguel's
+screen, and `owner` explicitly must not sync.
+
+Device-level (not per-person) on purpose: `owner`, and `captureCurrency` —
+which tracks where the phone *is*, and the household travels together.
+
+### What is now overridable
+- **Which insight cards appear** — trend chart, where the choices went, where it
+  goes, committed. The headline is not optional; it is the app.
+- **Spending vs Balance view** — moved out of flat settings into the per-person
+  map.
+- **The "Where it goes" period**, which previously reset to 3M on every app
+  open. That was arguably a bug: someone who prefers 1Y had to re-tap it every
+  session.
+
+Left alone deliberately: the statistical thresholds (baseline lookback,
+`≥20% and ≥£15` for notable, `≥3 occurrences` for recurring). Exposing those
+reads as control but mostly lets the warnings be tuned away, and a threshold you
+set yourself stops being evidence.
+
+Capture Out/In still resets to Out each session, on purpose. A sticky "In" means
+logging a coffee the next morning and silently recording it as income.
+
+### Design details worth keeping
+- **Resolution merges, never replaces.** An override written before a card
+  existed still gets that card's default, so a new card appears rather than
+  reading `undefined` and vanishing.
+- **`hasOverrides` drives an explicit "Currently on the defaults" / "Back to the
+  defaults"**, so it is always clear whether what you are seeing is the app's
+  opinion or your own edit.
+- **Legacy `view` migrated** into the owner's slot; without it, updating would
+  quietly put whoever chose Balance back onto Spending.
+
+### Files changed
+New: `src/domain/{preferences,preferences.test}.ts`.
+Rewritten: `src/hooks/useSettings.ts`.
+Modified: `src/components/{Settings,Insights}.tsx`, `src/App.tsx`,
+`scripts/verify-views.mjs`.
+
+### Checks run
+- `npm test` — **227 passed** (was 212; +15 on preference resolution)
+- `npm run verify:all` — **100 browser checks**, verify-views now 28, including
+  that one person's override does not change the other's screen, that it
+  survives a reload, and that the reset works
+- `npm run audit:layout` — clean on iPhone 15 and iPhone 13 Mini, main + sheet
+- typecheck and build clean; precache 713 KB
+
+### Known issues / blockers
+- Preferences do not follow a person to a new device. Deliberate for now; the
+  shape supports it.
+- `HOUSEHOLD` remains a hardcoded two-person constant.
+- No streak detection yet.
+- Committed/discretionary split still unvalidated against real data.
+- Favourites sync still unproven across two devices.
+- `icon-512.png` still 309 KB; no UI to re-rate an approximate-FX entry.
+
+### Next recommended task
+Streak detection in words over the chosen figure.
+
+---
+
 ## 2026-09-13 — Charts
 
 ### Goal

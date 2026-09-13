@@ -107,6 +107,66 @@ await closeSettings(page);
 await page.waitForTimeout(500);
 check('switching back removes the balance card', !/balance this month/i.test(await main()));
 
+// --- per-person card visibility ----------------------------------------------
+check('cards are on by default', /committed each month/i.test(await main()));
+
+await openSettings(page);
+const sheetBefore = await page.getByRole('dialog').innerText();
+check('says it is on the defaults', /currently on the defaults/i.test(sheetBefore));
+check('card list is labelled for this person', /miguel's cards/i.test(sheetBefore));
+
+await page.getByRole('switch', { name: /committed each month/i }).click();
+await page.waitForTimeout(300);
+check('offers a way back once customised', /back to the defaults/i.test(await page.getByRole('dialog').innerText()));
+await closeSettings(page);
+await page.waitForTimeout(400);
+check('turning a card off hides it', !/committed each month/i.test(await main()));
+
+await page.reload({ waitUntil: 'networkidle' });
+await page.waitForTimeout(1200);
+check('the card stays hidden after a reload', !/committed each month/i.test(await main()));
+
+// --- the other person is unaffected ------------------------------------------
+// This is the whole point of keying preferences by person: Ines turning cards
+// off on a shared phone must not change what Miguel sees, and vice versa.
+await openSettings(page);
+await page.getByRole('dialog').getByRole('button', { name: 'Ines', exact: true }).first().click();
+await page.waitForTimeout(400);
+const inesSheet = await page.getByRole('dialog').innerText();
+check("switching person shows that person's cards", /ines's cards/i.test(inesSheet));
+check('the other person is still on the defaults', /currently on the defaults/i.test(inesSheet));
+await closeSettings(page);
+await page.waitForTimeout(400);
+check("the other person sees the card Miguel hid", /committed each month/i.test(await main()));
+
+// --- and switching back restores the first person's choices ------------------
+await openSettings(page);
+await page.getByRole('dialog').getByRole('button', { name: 'Miguel', exact: true }).first().click();
+await page.waitForTimeout(400);
+await closeSettings(page);
+await page.waitForTimeout(400);
+check('switching back restores his override', !/committed each month/i.test(await main()));
+
+// --- the period is remembered ------------------------------------------------
+await page.getByRole('button', { name: '1Y', exact: true }).click();
+await page.waitForTimeout(400);
+await page.reload({ waitUntil: 'networkidle' });
+await page.waitForTimeout(1200);
+const yearSelected = await page.evaluate(() => {
+  const button = [...document.querySelectorAll('button')].find((el) => el.textContent?.trim() === '1Y');
+  return button?.getAttribute('aria-pressed') === 'true';
+});
+check('the chosen period survives a reload', yearSelected);
+
+// --- and the defaults are one tap away ---------------------------------------
+await openSettings(page);
+await page.getByRole('dialog').getByRole('button', { name: /back to the defaults/i }).click();
+await page.waitForTimeout(400);
+check('resetting says so', /currently on the defaults/i.test(await page.getByRole('dialog').innerText()));
+await closeSettings(page);
+await page.waitForTimeout(400);
+check('resetting brings the card back', /committed each month/i.test(await main()));
+
 if (shot != null) await page.screenshot({ path: shot, fullPage: true });
 check('no console or page errors', problems.length === 0);
 

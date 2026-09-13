@@ -41,10 +41,13 @@ const App: React.FC = () => {
   const { ledger, loaded, addEntry, deleteEntry, mergeIn } = ledgerApi;
   const {
     settings,
+    preferences,
+    customised,
     loaded: settingsLoaded,
     setOwner,
     setCaptureCurrency,
-    setView
+    updatePreferences,
+    resetPreferences
   } = useSettings();
   const sync = useSync({
     ledger,
@@ -200,9 +203,15 @@ const App: React.FC = () => {
         {/* Balance first when it is switched on — if someone has opted into
             tracking a budget, the net is the number they came for. Spending
             stays underneath either way, because that is still the app. */}
-        {settings.view === 'balance' ? <Balance entries={ledger.entries} /> : null}
+        {preferences.view === 'balance' ? <Balance entries={ledger.entries} /> : null}
 
-        <Insights entries={ledger.entries} showIncome={settings.view === 'balance'} />
+        <Insights
+          entries={ledger.entries}
+          showIncome={preferences.view === 'balance'}
+          cards={preferences.cards}
+          range={preferences.range}
+          onRangeChange={(range) => updatePreferences({ range })}
+        />
 
         {!loaded ? (
           <Card>
@@ -301,8 +310,12 @@ const App: React.FC = () => {
       <Settings
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}
-        view={settings.view}
-        onViewChange={setView}
+        view={preferences.view}
+        onViewChange={(view) => updatePreferences({ view })}
+        cards={preferences.cards}
+        onCardToggle={(card, on) => updatePreferences({ cards: { [card]: on } })}
+        customised={customised}
+        onResetPreferences={resetPreferences}
         owner={settings.owner}
         onOwnerChange={setOwner}
         captureCurrency={settings.captureCurrency}

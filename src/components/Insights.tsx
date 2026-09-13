@@ -22,6 +22,7 @@ import {
 } from '../domain/insights';
 import { formatMoney } from '../domain/money';
 import { committedSpend, type RecurringSeries } from '../domain/recurring';
+import type { CardId } from '../domain/preferences';
 import type { Entry } from '../domain/types';
 import { Card, CardHeader, Label, Well, cx } from './ui';
 
@@ -33,6 +34,11 @@ interface InsightsProps {
    * rather than as a footnote here.
    */
   showIncome: boolean;
+  /** Which cards this person has chosen to see. */
+  cards: Record<CardId, boolean>;
+  /** Remembered between sessions rather than reset to 3M every time. */
+  range: RangeId;
+  onRangeChange: (range: RangeId) => void;
 }
 
 const percent = (value: number): string => `${Math.round(Math.abs(value) * 100)}%`;
@@ -133,9 +139,14 @@ const ChoiceRow: React.FC<{ line: ChoiceLine }> = ({ line }) => (
   </li>
 );
 
-export const Insights: React.FC<InsightsProps> = ({ entries, showIncome }) => {
+export const Insights: React.FC<InsightsProps> = ({
+  entries,
+  showIncome,
+  cards,
+  range,
+  onRangeChange
+}) => {
   const [openGroup, setOpenGroup] = useState<GroupId | null>(null);
-  const [range, setRange] = useState<RangeId>('3m');
 
   const choices = useMemo(() => reviewChoices(entries), [entries]);
   const trend = useMemo(() => chosenByMonth(entries, { months: 6 }), [entries]);
@@ -216,7 +227,7 @@ export const Insights: React.FC<InsightsProps> = ({ entries, showIncome }) => {
         {/* The chart that actually answers the question. Emphasis form: this
             month in the accent, the rest recessive, the usual level drawn as a
             rule you can see rather than a number the app asserts. */}
-        {trend.length >= 2 ? (
+        {cards.trend && trend.length >= 2 ? (
           <div className="mt-5">
             <TrendColumns
               points={trend}
@@ -255,7 +266,7 @@ export const Insights: React.FC<InsightsProps> = ({ entries, showIncome }) => {
         ) : null}
       </Card>
 
-      {choices.lines.length > 0 ? (
+      {cards.choices && choices.lines.length > 0 ? (
         <Card>
           <CardHeader title="Where the choices went" />
           <p className="mt-1 text-caption text-ink-muted">
@@ -269,6 +280,7 @@ export const Insights: React.FC<InsightsProps> = ({ entries, showIncome }) => {
         </Card>
       ) : null}
 
+      {cards.whereItGoes ? (
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Label>Where it goes</Label>
@@ -277,7 +289,7 @@ export const Insights: React.FC<InsightsProps> = ({ entries, showIncome }) => {
               <button
                 key={option.id}
                 type="button"
-                onClick={() => setRange(option.id)}
+                onClick={() => onRangeChange(option.id)}
                 aria-pressed={range === option.id}
                 className={cx(
                   'pressable min-h-[44px] min-w-[44px] rounded-pill px-2 text-micro font-semibold tracking-[0.06em]',
@@ -371,8 +383,9 @@ export const Insights: React.FC<InsightsProps> = ({ entries, showIncome }) => {
           </div>
         )}
       </Card>
+      ) : null}
 
-      {committed.committed.length > 0 || committed.habitual.length > 0 ? (
+      {cards.committed && (committed.committed.length > 0 || committed.habitual.length > 0) ? (
         <Card>
           <div className="flex items-baseline justify-between gap-3">
             <Label>Committed each month</Label>
