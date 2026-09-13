@@ -1,5 +1,6 @@
 import type { CategoryId } from './categories';
 import { parseAmount } from './money';
+import { normaliseSpokenAmount } from './spokenNumbers';
 import { guessCategory, type CategoryGuess } from './suggestions';
 
 /**
@@ -172,4 +173,20 @@ export const parseEntryText = (raw: string, options: ParseOptions = {}): ParsedE
     category,
     note
   };
+};
+
+/**
+ * Parse whatever is in the field, whether it was typed or dictated.
+ *
+ * The spoken pass runs **only as a fallback**, when reading the text literally
+ * finds no amount. Normalising unconditionally would rewrite typed input too —
+ * "table one" would quietly become a £1 entry — and typed text is the common
+ * case, so it is never second-guessed.
+ */
+export const parseEntryInput = (raw: string, options: ParseOptions = {}): ParsedEntryText => {
+  const literal = parseEntryText(raw, options);
+  if (literal.amount != null) return literal;
+
+  const spoken = parseEntryText(normaliseSpokenAmount(raw), options);
+  return spoken.amount != null ? spoken : literal;
 };

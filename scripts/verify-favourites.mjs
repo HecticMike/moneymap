@@ -99,7 +99,7 @@ check('his personal favourite hidden on her tab', !/tesco/i.test(inesTab));
 await page.getByRole('button', { name: /hairdresser/i }).first().click();
 await page.waitForTimeout(400);
 
-await page.getByLabel('Amount, or amount with a description').fill('42');
+await page.getByLabel(/^amount/i).fill('42');
 await page.waitForTimeout(400);
 await page.getByRole('button', { name: /^add £/i }).click();
 await page.waitForTimeout(900);

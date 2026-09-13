@@ -4,6 +4,78 @@ Newest entry first. Factual and concise; partial work is stated as partial.
 
 ---
 
+## 2026-09-13 — Keypad switch and dictation
+
+### The bug
+The amount field used `inputMode="decimal"`. On iOS that is a keypad with **no
+letters at all and no way to reach any**, so the free-text capture shipped in
+slice 3 was unreachable on the only device this app runs on. The placeholder
+read `12.50 tesco` — promising something the keyboard forbade.
+
+### Fix
+A **123 / ABC** button on the right of the field. Numbers remain the default,
+because nearly every entry is just an amount.
+
+The two modes are genuinely different controls:
+
+- **Numbers** — an `<input>`, 36px, tabular figures, the hero of the screen.
+- **Text** — a `<textarea>` that wraps and grows. The side buttons leave about
+  177px, and no readable size fits a dictated sentence on one line; wrapping is
+  the only way to show it. That matters most here, because dictation is exactly
+  when you need to read back what was heard.
+
+### Voice
+Rather than the Web Speech API — unreliable inside an installed iOS PWA — this
+uses **the system keyboard's own dictation key**, which is right there on the
+letter keyboard. So the keypad switch *is* the voice feature, with no extra
+permission, no new dependency, and nothing to fail silently.
+
+What was missing was the parsing. iOS dictation writes numbers as words, and
+British speech puts the pence after the unit. `src/domain/spokenNumbers.ts`
+normalises both: "forty five pounds twenty fuel yesterday" → `45.20 fuel
+yesterday`, which the existing parser already understands.
+
+**It runs only as a fallback** (`parseEntryInput`), when reading the text
+literally finds no amount. Normalising unconditionally would rewrite typed input
+too — "table one" would quietly become a £1 entry.
+
+### Two bugs found while building it
+- **Swapping input→textarea replaced the element**, so the focus call in the
+  click handler targeted the control about to be unmounted. The keyboard closed
+  and the field had to be tapped again — defeating the button entirely. Focus
+  now happens in an effect after the new element mounts.
+- **Dictated text was rendered at 36px**, showing about eleven characters of a
+  forty-character sentence. Caught by rendering it, not by any test.
+
+### Files changed
+New: `src/domain/{spokenNumbers,spokenNumbers.test}.ts`.
+Modified: `src/domain/parseEntry.ts` (`parseEntryInput`),
+`src/components/Capture.tsx`, `scripts/{verify-capture,verify-favourites}.mjs`.
+
+### Checks run
+- `npm test` — **241 passed** (was 227; +14 on spoken numbers, including the
+  full dictated sentence end to end)
+- `npm run verify:all` — **110 browser checks**; verify-capture now covers the
+  toggle, that focus survives the swap, and that a dictated entry saves
+- `npm run audit:layout` — clean on iPhone 15 and iPhone 13 Mini
+- typecheck and build clean; precache 717 KB
+
+### Known issues / blockers
+- **The keyboard swap itself is unverifiable here.** Playwright reports
+  `inputmode` and focus, but no headless browser raises an iOS keyboard. Whether
+  tapping ABC actually opens the letter keyboard needs a real phone.
+- Spoken-number coverage is British English and cardinals only. "Twelve fifty"
+  meaning £12.50 is deliberately *not* handled — too ambiguous to guess.
+- The user guide artifact does not yet mention the ABC button or dictation.
+- Streak detection still not built; committed/discretionary split still
+  unvalidated against real data; favourites sync unproven across two devices.
+
+### Next recommended task
+Confirm on a real iPhone that ABC raises the letter keyboard and that the
+dictation key reaches the field. If it does, add both to the user guide.
+
+---
+
 ## 2026-09-13 — Per-person display preferences
 
 ### Goal

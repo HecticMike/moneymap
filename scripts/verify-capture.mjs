@@ -25,7 +25,7 @@ page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
 await page.goto(url, { waitUntil: 'networkidle' });
 await claimPhone(page, 'Miguel');
 
-const amount = page.getByLabel('Amount, or amount with a description');
+const amount = page.getByLabel(/^amount/i);
 const results = [];
 const check = (name, pass) => results.push({ name, pass: Boolean(pass) });
 
@@ -74,6 +74,38 @@ await page.reload({ waitUntil: 'networkidle' });
 await page.waitForTimeout(900);
 const afterReload = await page.locator('body').innerText();
 check('entries survive a reload', /2 entries/i.test(afterReload));
+
+// --- the keypad toggle -------------------------------------------------------
+// iOS shows a keypad with no letters for inputmode=decimal, which made the
+// whole type-a-description feature unreachable on the phone it was built for.
+check('starts on the number keypad', (await amount.getAttribute('inputmode')) === 'decimal');
+check('starts with a numeric placeholder', (await amount.getAttribute('placeholder')) === '0.00');
+
+await page.getByRole('button', { name: /switch to the letter keyboard/i }).click();
+await page.waitForTimeout(400);
+check('toggling asks for the letter keyboard', (await amount.getAttribute('inputmode')) === 'text');
+check('placeholder now shows what can be typed', /tesco/.test((await amount.getAttribute('placeholder')) ?? ''));
+check('the field keeps focus after the swap', await amount.evaluate((el) => el === document.activeElement));
+
+await page.getByRole('button', { name: /switch back to the number keypad/i }).click();
+await page.waitForTimeout(400);
+check('toggling back returns to numbers', (await amount.getAttribute('inputmode')) === 'decimal');
+
+// --- dictated text ------------------------------------------------------------
+// iOS dictation writes numbers as words, so this is what actually arrives in
+// the field when someone uses the microphone on the letter keyboard.
+await page.getByRole('button', { name: /switch to the letter keyboard/i }).click();
+await page.waitForTimeout(300);
+await amount.fill('forty five pounds twenty fuel yesterday');
+await page.waitForTimeout(500);
+const dictated = await page.locator('form').innerText();
+check('understands a dictated amount', /add £45\.20/i.test(dictated));
+check('understands a dictated category', /fuel/i.test(dictated));
+
+await page.getByRole('button', { name: /^add £/i }).click();
+await page.waitForTimeout(800);
+check('a dictated entry saves', /3 entries/i.test(await page.locator('body').innerText()));
+check('saving returns to the number keypad', (await amount.getAttribute('inputmode')) === 'decimal');
 
 if (shot != null) await page.screenshot({ path: shot, fullPage: true });
 

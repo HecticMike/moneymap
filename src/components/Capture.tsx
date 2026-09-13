@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import {
   CATEGORY_META,
@@ -8,7 +8,7 @@ import {
 } from '../domain/categories';
 import type { FavouriteDraft } from '../domain/favourites';
 import { CURRENCY_META, formatMoney } from '../domain/money';
-import { parseEntryText } from '../domain/parseEntry';
+import { parseEntryInput } from '../domain/parseEntry';
 import { HOUSEHOLD } from '../domain/people';
 import { learnNoteAssociations, suggestCategoryChips } from '../domain/suggestions';
 import type { CurrencyCode, Entry, Favourite } from '../domain/types';
@@ -59,6 +59,56 @@ export const Capture: React.FC<CaptureProps> = ({
   const [noteOverride, setNoteOverride] = useState<string | null>(null);
   const [person, setPerson] = useState<string>(owner ?? '');
 
+  /**
+   * Which keyboard the amount field asks for. Numbers by default, because that
+   * is what nearly every entry needs.
+   */
+  const [keypad, setKeypad] = useState<'number' | 'text'>('number');
+  const amountRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null);
+
+  const refocusAfterSwap = useRef(false);
+
+  /**
+   * iOS picks the keyboard when a field gains focus and will not change it
+   * underneath an open one, so the swap has to end in a fresh focus.
+   *
+   * The two modes are different elements — an input for the amount, a textarea
+   * for a sentence — so the focus cannot happen in the click handler: at that
+   * point the ref still holds the element about to be unmounted. It runs in an
+   * effect after the new element has mounted instead. Without this the keyboard
+   * simply closes and the field has to be tapped again, which defeats the
+   * point of the button.
+   */
+  const switchKeypad = () => {
+    setKeypad(keypad === 'number' ? 'text' : 'number');
+    refocusAfterSwap.current = true;
+  };
+
+  useEffect(() => {
+    if (!refocusAfterSwap.current) return;
+    refocusAfterSwap.current = false;
+
+    const element = amountRef.current;
+    if (element == null) return;
+
+    element.focus();
+    // Caret at the end, rather than selecting what is already typed.
+    const end = element.value.length;
+    element.setSelectionRange(end, end);
+  }, [keypad]);
+
+  /**
+   * Grow the description box to fit what is in it. A fixed two rows clipped the
+   * last line of a dictated sentence, which is exactly the text someone needs to
+   * read back before saving.
+   */
+  useEffect(() => {
+    const element = amountRef.current;
+    if (element == null || keypad !== 'text') return;
+    element.style.height = 'auto';
+    element.style.height = `${element.scrollHeight}px`;
+  }, [text, keypad]);
+
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -66,7 +116,7 @@ export const Capture: React.FC<CaptureProps> = ({
 
   const learned = useMemo(() => learnNoteAssociations(entries), [entries]);
   const chips = useMemo(() => suggestCategoryChips(entries, { kind, limit: 6 }), [entries, kind]);
-  const parsed = useMemo(() => parseEntryText(text, { learned }), [text, learned]);
+  const parsed = useMemo(() => parseEntryInput(text, { learned }), [text, learned]);
 
   const category: CategoryId =
     categoryOverride ??
@@ -125,6 +175,7 @@ export const Capture: React.FC<CaptureProps> = ({
       );
     } else {
       reset();
+      setKeypad('number');
       setFeedback(
         result.approximateRate
           ? `Saved ${formatMoney(result.entry.baseAmount)} at the nearest available rate.`
@@ -187,18 +238,79 @@ export const Capture: React.FC<CaptureProps> = ({
               {currency}
             </span>
           </button>
-          <input
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            inputMode="decimal"
-            autoComplete="off"
-            autoCorrect="off"
-            autoCapitalize="none"
-            spellCheck={false}
-            placeholder="12.50 tesco"
-            aria-label="Amount, or amount with a description"
-            className="tnum min-w-0 flex-1 border-0 bg-transparent px-4 py-4 text-display font-semibold text-brand-highlight placeholder:text-lead placeholder:font-normal placeholder:tracking-normal placeholder:text-ink-faint focus:outline-none"
-          />
+          {keypad === 'number' ? (
+            <input
+              ref={amountRef as React.RefObject<HTMLInputElement>}
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              inputMode="decimal"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              placeholder="0.00"
+              aria-label="Amount"
+              // The amount is the hero of this screen, and tabular figures stop
+              // it shifting as digits are typed.
+              className="tnum min-w-0 flex-1 border-0 bg-transparent px-4 py-4 text-display font-semibold text-brand-highlight placeholder:text-lead placeholder:font-normal placeholder:tracking-normal placeholder:text-ink-faint focus:outline-none"
+            />
+          ) : (
+            /* A textarea, not an input, because the side buttons leave about
+               177px and a dictated sentence is far longer than that fits on one
+               line at any readable size. Wrapping shows the whole thing, which
+               matters most here — dictation is exactly the case where you need
+               to check what it heard. */
+            <textarea
+              ref={amountRef as React.RefObject<HTMLTextAreaElement>}
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              onKeyDown={(event) => {
+                // Enter should add the entry, not insert a line break.
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                }
+              }}
+              rows={2}
+              inputMode="text"
+              autoComplete="off"
+              autoCorrect="on"
+              autoCapitalize="none"
+              spellCheck={false}
+              placeholder="12.50 tesco yesterday"
+              aria-label="Amount and description, for example 12.50 tesco yesterday"
+              className="min-w-0 flex-1 resize-none overflow-hidden border-0 bg-transparent px-4 py-3.5 text-lead font-medium leading-snug text-brand-highlight placeholder:font-normal placeholder:tracking-normal placeholder:text-ink-faint focus:outline-none"
+            />
+          )}
+
+          {/* The number pad on iOS has no letters at all, so the whole
+              type-a-description feature was unreachable on the phone it was
+              built for. This swaps the keyboard — and because the letter
+              keyboard carries the system dictation key, it is also how voice
+              entry works, without depending on a speech API that is unreliable
+              inside an installed PWA. */}
+          <button
+            type="button"
+            onClick={switchKeypad}
+            aria-label={
+              keypad === 'number'
+                ? 'Switch to the letter keyboard, for typing or dictating a description'
+                : 'Switch back to the number keypad'
+            }
+            className={cx(
+              'pressable tap-target flex w-14 shrink-0 flex-col items-center justify-center gap-0.5 border-l',
+              keypad === 'text'
+                ? 'border-brand-highlight/40 bg-brand-highlight/10 text-brand-highlight'
+                : 'border-edge bg-surface-high/40 text-ink-muted'
+            )}
+          >
+            <span className="text-caption font-semibold leading-none">
+              {keypad === 'number' ? 'ABC' : '123'}
+            </span>
+            <span className="text-[9px] uppercase tracking-[0.1em] text-ink-faint" aria-hidden>
+              {keypad === 'number' ? 'say it' : 'back'}
+            </span>
+          </button>
         </div>
 
         {/* The parser is allowed to be wrong, never silently wrong. */}
