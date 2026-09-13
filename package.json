@@ -11,6 +11,7 @@
     "test:watch": "vitest",
     "typecheck": "tsc -b",
     "verify:browser": "node scripts/verify-import.mjs",
+    "verify:capture": "node scripts/verify-capture.mjs",
     "audit:layout": "node scripts/audit-layout.mjs",
     "screenshot": "node scripts/screenshot.mjs"
   },

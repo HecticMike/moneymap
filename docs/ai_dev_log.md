@@ -4,6 +4,81 @@ Newest entry first. Factual and concise; partial work is stated as partial.
 
 ---
 
+## 2026-09-13 — Slice 3: fast capture
+
+### Goal
+Make logging an entry quick one-handed. v1 took five interactions and a scroll
+through a 24-item dropdown defaulted to Supermarket regardless of usage.
+
+### Completed
+- **Ranked category chips** (`src/domain/suggestions.ts`) — top six categories
+  by recency-weighted frequency, 30-day half-life so the chips follow current
+  habits instead of ossifying. Falls back to a sensible default set on a cold
+  install, always filling the row.
+- **Free-text capture** (`src/domain/parseEntry.ts`) — one field takes `12.50`
+  or `45.20 tesco 12 sep`. Extracts amount, date (today/yesterday/day
+  names/`12 sep`/`01/09`) and category. Date is parsed *first*, or "12 sep"
+  has its day eaten as the amount and the entry silently costs £12.
+- **Learned associations** — note words are mapped to categories from the
+  household's own entries and beat the built-in keyword table, which exists
+  only to cover the cold start. Requires two sightings; one is coincidence.
+- **Saved templates** (`src/domain/templates.ts`, `useTemplates`) — one tap
+  fills category, currency, person and note.
+- **Capture rebuilt** (`src/components/Capture.tsx`, replaces `QuickAdd.tsx`) —
+  smart field, an Out/In toggle, chips, templates, and date/person/note
+  collapsed behind a disclosure. Fast path is now: type amount, tap chip, add.
+
+### Design decisions worth keeping
+- **Parsing is shown, never silently applied.** Everything understood is echoed
+  above the button ("£45.20 · Supermarket · 12 Sep · "tesco"") and the submit
+  button reads `Add £45.20`. The parser may be wrong; it may not be wrong
+  invisibly.
+- **Explicit choices beat parsing.** Category, date and note are held as
+  separate overrides, so typing more never undoes a chip just tapped. Covered
+  by a browser check.
+- **Guessing stops rather than guesses badly.** `guessCategory` returns null
+  when unsure instead of defaulting to something plausible.
+
+### Files changed
+New: `src/domain/{suggestions,suggestions.test,parseEntry,parseEntry.test,templates}.ts`,
+`src/hooks/useTemplates.ts`, `src/components/Capture.tsx`,
+`scripts/verify-capture.mjs`.
+Modified: `src/App.tsx`, `src/storage/db.ts` (templates key).
+Removed: `src/components/QuickAdd.tsx`.
+
+### Checks run
+- `npm test` — **106 passed** (was 67; +21 suggestions/parsing)
+- `npm run verify:capture` — **12/12** in WebKit at iPhone 15
+- `npm run audit:layout` — clean on iPhone 15 and iPhone 13 Mini
+- typecheck and build clean; precache 660 KB
+
+One unit test failed first time. The cause was a badly chosen fixture
+(`"20 sep 5 dinner"` is genuinely ambiguous) *and* a real parser rule that was
+too aggressive: any date past today was read as last year, so `sep 20` typed on
+13 Sep jumped back twelve months. Tolerance is now 31 days, which keeps
+`25 dec` in September meaning last Christmas while leaving a near-term date
+alone.
+
+### Known issues / blockers
+- **Templates are per-device.** Chips are derived from synced history so those
+  already agree across both phones, but a template saved on one phone does not
+  reach the other. Carrying them would mean adding them to the Drive payload —
+  a sync-format change, deliberately not bundled into this slice.
+- Keyword table is UK/Portugal-biased guesswork and only matters until the
+  household's own history takes over. Wrong guesses are visible and
+  one-tap-correctable.
+- Still no UI to re-rate an approximate-FX entry.
+- `icon-512.png` still 309 KB.
+- No physical-device testing; WebKit-in-Playwright only.
+
+### Next recommended task
+**Slice 4 — insights.** Group rollups already exist in rough form; what is
+missing is the part actually asked for: month-vs-month variance ("is this month
+unusual?") and recurring-vs-one-off detection. Both are pure functions over the
+ledger and belong in `src/domain/` with tests.
+
+---
+
 ## 2026-09-12 — iPhone layout fixes
 
 ### Goal

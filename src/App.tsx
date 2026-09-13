@@ -2,10 +2,11 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { CATEGORY_META, GROUP_META, groupOf, isIncome, type GroupId } from './domain/categories';
 import { formatMoney } from './domain/money';
-import { QuickAdd } from './components/QuickAdd';
+import { Capture } from './components/Capture';
 import { SyncPanel } from './components/SyncPanel';
 import { useLedger } from './hooks/useLedger';
 import { useSync } from './hooks/useSync';
+import { useTemplates } from './hooks/useTemplates';
 import { parseLedgerFile, type ParseReport } from './sync/ledgerFile';
 
 const panel = 'border border-brand-line bg-brand-ocean/80 px-4 py-5 shadow-panel';
@@ -14,6 +15,7 @@ const label = 'text-[10px] font-semibold uppercase tracking-[0.25em] text-brand-
 const App: React.FC = () => {
   const ledgerApi = useLedger();
   const { ledger, loaded, addEntry, deleteEntry, mergeIn } = ledgerApi;
+  const templateApi = useTemplates();
   const sync = useSync({
     ledger,
     revision: ledgerApi.revision,
@@ -88,11 +90,18 @@ const App: React.FC = () => {
         <header className="flex flex-wrap items-end justify-between gap-3">
           <h1 className="text-3xl font-semibold">Money Map</h1>
           <span className="border border-brand-line bg-brand-ocean/60 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em]">
-            Slice 2
+            Slice 3
           </span>
         </header>
 
-        <QuickAdd onAdd={addEntry} />
+        <Capture
+          entries={ledger.entries}
+          templates={templateApi.templates}
+          onAdd={addEntry}
+          onUseTemplate={templateApi.useTemplate}
+          onSaveTemplate={templateApi.addTemplate}
+          onRemoveTemplate={templateApi.removeTemplate}
+        />
 
         <SyncPanel
           status={sync.status}
@@ -295,7 +304,7 @@ const App: React.FC = () => {
         </section>
 
         <footer className="px-1 pb-6 text-[10px] uppercase tracking-[0.22em] text-brand-neutral">
-          Capture speed and insights land in slices 3 and 4.
+          Insights land in slice 4.
         </footer>
       </main>
     </div>

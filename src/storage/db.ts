@@ -15,7 +15,8 @@ export const KEYS = {
   settings: 'settings',
   fxRates: 'fx-rates',
   driveMeta: 'drive-meta',
-  importState: 'import-state'
+  importState: 'import-state',
+  templates: 'templates'
 } as const;
 
 export const dbGet = async <T>(key: string): Promise<T | undefined> => {
