@@ -4,6 +4,23 @@ Newest entry first. Factual and concise; partial work is stated as partial.
 
 ---
 
+## 2026-09-14 — Device verification
+
+Confirmed on a real iPhone by the household. Three items that had been shipped
+but unverifiable from here are now closed:
+
+- **The ABC button raises the letter keyboard.** The blur-and-refocus-after-mount
+  approach works on the device, not just in Playwright.
+- **The system dictation key reaches the field**, and the spoken-number
+  normalisation handles what it produces.
+- **The CSV downloads** from the installed home-screen app.
+
+No code changed. The user guide was updated to cover all three, since it had
+described free-text entry without mentioning it is unreachable until the
+keyboard is switched.
+
+---
+
 ## 2026-09-13 — Notes reach the export
 
 ### The question
